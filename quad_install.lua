@@ -21,19 +21,18 @@ local FILES = {
     { src = BASE .. "/quad/main.lua",         dst = "/quad/main.lua"         },
 }
 
-print("=== 四旋翼飞控安装程序 ===")
+print("=== Quad Flight Controller Installer ===")
 
 for _, f in ipairs(FILES) do
-    -- 创建父目录
     local dir = f.dst:match("^(.*)/[^/]+$")
     if dir and dir ~= "" then
         fs.makeDir(dir)
     end
 
-    io.write("下载 " .. f.dst .. " ... ")
+    io.write("Downloading " .. f.dst .. " ... ")
     local ok, err = pcall(function()
         local h = http.get(f.src)
-        if not h then error("HTTP 请求失败") end
+        if not h then error("HTTP request failed") end
         local content = h.readAll()
         h.close()
         local fh = fs.open(f.dst, "w")
@@ -49,13 +48,13 @@ for _, f in ipairs(FILES) do
 end
 
 print("")
-print("安装完成！")
+print("Install complete!")
 print("")
-print("请编辑 /quad/config.lua 填写：")
-print("  1. C.MOTOR_FL / FR / BR / BL  -- 转速控制器外设名称")
-print("  2. 如果电机名称与 'Create_SpeedController' 不同，修改 C.MOTOR_TYPE")
-print("  3. 调整 RPM_HOVER / RPM_MAX 以匹配你的螺旋桨")
+print("Edit /quad/config.lua and set:")
+print("  C.MOTOR_FL/FR/BR/BL  -- speed controller peripheral names")
+print("  (run peripheral.getNames() in CC console to find them)")
+print("  Adjust RPM_HOVER to match your rotors")
 print("")
-print("启动命令：dofile('/quad/main.lua')")
-print("或将以下内容加入 startup.lua：")
+print("Start: dofile('/quad/main.lua')")
+print("Or add to startup.lua:")
 print("  dofile('/quad/main.lua')")
