@@ -3,11 +3,41 @@
 --  Quadrotor flight controller with TUI
 -- =============================================================
 
-local C    = dofile("/quad/config.lua")
-local IMU  = dofile("/quad/imu.lua")
-local Mix  = dofile("/quad/mixer.lua")
-local Ctrl = dofile("/quad/controller.lua")
-local GUI  = dofile("/quad/gui.lua")
+-- ── pre-flight check ───────────────────────────────────────────
+term.setBackgroundColor(colors.black)
+term.setTextColor(colors.white)
+term.clear()
+term.setCursorPos(1, 1)
+
+if not term.isColor() then
+    print("ERROR: Advanced Computer required!")
+    print("This program needs colors (Advanced Computer).")
+    return
+end
+
+-- safe loader: show error on screen and halt if dofile fails
+local function safe_load(path)
+    local ok, result = pcall(dofile, path)
+    if not ok then
+        term.setTextColor(colors.red)
+        print("LOAD ERROR: " .. path)
+        term.setTextColor(colors.yellow)
+        print(tostring(result))
+        term.setTextColor(colors.white)
+        print("")
+        print("Press any key to exit.")
+        os.pullEvent("key")
+        error("load failed: " .. path)
+    end
+    return result
+end
+
+print("Loading quad FC...")
+local C    = safe_load("/quad/config.lua")
+local IMU  = safe_load("/quad/imu.lua")
+local Mix  = safe_load("/quad/mixer.lua")
+local Ctrl = safe_load("/quad/controller.lua")
+local GUI  = safe_load("/quad/gui.lua")
 
 -- globals
 local imu_state = {}
