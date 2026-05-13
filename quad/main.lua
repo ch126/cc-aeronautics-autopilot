@@ -1,7 +1,7 @@
 -- =============================================================
 --  quad/main.lua
---  四旋翼飞控主程序
---  并行运行：控制环(50Hz) + 导航环(10Hz) + 输入监听
+--  Quadrotor flight controller main program
+--  Parallel: ctrl loop(50Hz) + nav loop(10Hz) + input
 -- =============================================================
 
 dofile("/quad/config.lua")  -- 预载以便后续 dofile 缓存命中
@@ -10,21 +10,21 @@ local IMU  = dofile("/quad/imu.lua")
 local Mix  = dofile("/quad/mixer.lua")
 local Ctrl = dofile("/quad/controller.lua")
 
--- ============ 状态 ============
-local imu_state = {}   -- 最新 IMU 数据
+-- state
+local imu_state = {}
 local running   = true
 local ctrl_dt   = 1 / C.CTRL_HZ
 local nav_dt    = 1 / C.NAV_HZ
 
--- ============ 初始化 ============
+-- init
 local imu   = IMU.new()
 local mixer = Mix.new()
 local ctrl  = Ctrl.new()
 
-print("[QUAD] 电机状态: " .. mixer:status())
-print("[QUAD] 输入 'arm <高度>' 解锁，'help' 查看命令")
+print("[QUAD] Motors: " .. mixer:status())
+print("[QUAD] Type 'arm <alt>' to arm, 'help' for commands")
 
--- ============ 控制环 50Hz ============
+-- ctrl loop 50Hz
 local function ctrlLoop()
     local last_t = os.clock()
     while running do
@@ -32,25 +32,21 @@ local function ctrlLoop()
         local dt  = now - last_t
         last_t    = now
 
-        -- 读取传感器
         imu_state = imu:read(dt)
 
         if ctrl.armed then
-            -- 内环：姿态+速率
             local po, ro, yo = ctrl:updateInner(imu_state, dt)
-            -- 混控 + 输出
             mixer:mix(ctrl.throttle_out or C.RPM_HOVER, po, ro, yo)
         else
             mixer:allStop()
         end
 
-        -- 精确等待到下一个控制周期
         local sleep_t = ctrl_dt - (os.clock() - now)
         if sleep_t > 0.001 then os.sleep(sleep_t) end
     end
 end
 
--- ============ 导航环 10Hz ============
+-- nav loop 10Hz
 local function navLoop()
     local last_t = os.clock()
     while running do
@@ -65,30 +61,30 @@ local function navLoop()
     end
 end
 
--- ============ 帮助 ============
+-- help
 local function printHelp()
-    print("  arm [高度]        解锁并起飞到指定高度（默认5m）")
-    print("  disarm            加锁（立即停转）")
-    print("  hover             悬停在当前位置")
-    print("  goto <x> <z> [alt]  飞向坐标（需要GPS）")
-    print("  alt <高度>        改变目标高度")
-    print("  yaw <角度>        改变目标偏航")
-    print("  pos               显示当前位置/姿态")
-    print("  motors            显示电机转速")
-    print("  land              降落并加锁")
-    print("  quit              退出程序")
+    print("  arm [alt]           arm and take off to altitude (default 5)")
+    print("  disarm              disarm (stop all motors)")
+    print("  hover               hold current position")
+    print("  goto <x> <z> [alt]  fly to coords (needs GPS)")
+    print("  alt <h>             set target altitude")
+    print("  yaw <deg>           set target yaw")
+    print("  pos                 show attitude/position")
+    print("  motors              show motor RPM")
+    print("  land                land and disarm")
+    print("  quit                exit")
 end
 
--- ============ 降落流程 ============
+-- landing sequence
 local function doLand()
-    print("[QUAD] 开始降落...")
+    print("[QUAD] Landing...")
     ctrl.target_alt = 0.3
     os.sleep(3)
     ctrl:disarm()
-    print("[QUAD] 已降落并加锁")
+    print("[QUAD] Landed and disarmed")
 end
 
--- ============ 输入环 ============
+-- input loop
 local function inputLoop()
     while running do
         io.write("> ")
@@ -107,19 +103,19 @@ local function inputLoop()
             local h = tonumber(parts[2]) or 5
             ctrl:arm(imu_state.alt, imu_state.yaw)
             ctrl.target_alt = h
-            print(string.format("[QUAD] 解锁，目标高度 %.1f m", h))
+            print(string.format("[QUAD] Armed, target alt %.1f m", h))
 
         elseif cmd == "disarm" then
             ctrl:disarm()
-            print("[QUAD] 已加锁")
+            print("[QUAD] Disarmed")
 
         elseif cmd == "hover" then
             ctrl:hover(imu_state)
-            print("[QUAD] 悬停")
+            print("[QUAD] Hovering")
 
         elseif cmd == "goto" then
             if not imu_state.x then
-                print("[QUAD] 无GPS，无法使用 goto")
+                print("[QUAD] No GPS, cannot use goto")
             else
                 local x   = tonumber(parts[2])
                 local z   = tonumber(parts[3])
@@ -128,9 +124,9 @@ local function inputLoop()
                     ctrl.target_x   = x
                     ctrl.target_z   = z
                     ctrl.target_alt = alt
-                    print(string.format("[QUAD] 飞往 (%.1f, %.1f) 高度 %.1f", x, z, alt))
+                    print(string.format("[QUAD] Goto (%.1f, %.1f) alt %.1f", x, z, alt))
                 else
-                    print("用法: goto <x> <z> [alt]")
+                    print("Usage: goto <x> <z> [alt]")
                 end
             end
 
@@ -138,28 +134,28 @@ local function inputLoop()
             local h = tonumber(parts[2])
             if h then
                 ctrl.target_alt = h
-                print(string.format("[QUAD] 目标高度 → %.1f m", h))
+                print(string.format("[QUAD] Target alt -> %.1f m", h))
             end
 
         elseif cmd == "yaw" then
             local y = tonumber(parts[2])
             if y then
                 ctrl.target_yaw = y % 360
-                print(string.format("[QUAD] 目标偏航 → %.1f°", ctrl.target_yaw))
+                print(string.format("[QUAD] Target yaw -> %.1f deg", ctrl.target_yaw))
             end
 
         elseif cmd == "pos" then
             local s = imu_state
             if s.pitch then
                 print(string.format(
-                    "姿态: P=%.1f° R=%.1f° Y=%.1f°  高度: %.2fm  爬升率: %.2fm/s",
+                    "Att: P=%.1f R=%.1f Y=%.1f  Alt=%.2fm  Clmb=%.2fm/s",
                     s.pitch or 0, s.roll or 0, s.yaw or 0,
                     s.alt   or 0, s.climb or 0))
                 if s.x then
-                    print(string.format("位置: X=%.2f  Z=%.2f", s.x, s.z))
+                    print(string.format("Pos: X=%.2f  Z=%.2f", s.x, s.z))
                 end
             else
-                print("[QUAD] IMU 尚未就绪")
+                print("[QUAD] IMU not ready")
             end
 
         elseif cmd == "motors" then
@@ -171,17 +167,17 @@ local function inputLoop()
         elseif cmd == "quit" then
             ctrl:disarm()
             running = false
-            print("[QUAD] 退出")
+            print("[QUAD] Quit")
 
         elseif cmd ~= "" then
-            print("未知命令 '" .. cmd .. "'，输入 help 查看帮助")
+            print("Unknown command '" .. cmd .. "', type help")
         end
         end  -- if line
     end
 end
 
--- ============ 主入口 ============
-print("[QUAD] 启动飞控，CTRL_HZ=" .. C.CTRL_HZ .. " NAV_HZ=" .. C.NAV_HZ)
+-- main
+print("[QUAD] Starting, CTRL_HZ=" .. C.CTRL_HZ .. " NAV_HZ=" .. C.NAV_HZ)
 parallel.waitForAny(ctrlLoop, navLoop, inputLoop)
 mixer:allStop()
-print("[QUAD] 程序结束")
+print("[QUAD] Stopped")
