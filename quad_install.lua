@@ -11,13 +11,14 @@
 local BASE = "https://raw.githubusercontent.com/CharlesHuangCharles/auto_drive/main"
 
 local FILES = {
-    -- 依赖：PID 控制器（来自 autopilot 模块）
+    -- dependency: PID controller
     { src = BASE .. "/autopilot/pid.lua",     dst = "/autopilot/pid.lua"     },
-    -- 四旋翼模块
+    -- quad module
     { src = BASE .. "/quad/config.lua",       dst = "/quad/config.lua"       },
     { src = BASE .. "/quad/imu.lua",          dst = "/quad/imu.lua"          },
     { src = BASE .. "/quad/mixer.lua",        dst = "/quad/mixer.lua"        },
     { src = BASE .. "/quad/controller.lua",   dst = "/quad/controller.lua"   },
+    { src = BASE .. "/quad/gui.lua",          dst = "/quad/gui.lua"          },
     { src = BASE .. "/quad/main.lua",         dst = "/quad/main.lua"         },
 }
 

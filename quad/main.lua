@@ -1,46 +1,73 @@
 -- =============================================================
---  quad/main.lua
---  Quadrotor flight controller main program
---  Parallel: ctrl loop(50Hz) + nav loop(10Hz) + input
+--  quad/main.lua   (GUI version)
+--  Quadrotor flight controller with TUI
 -- =============================================================
 
-dofile("/quad/config.lua")  -- 预载以便后续 dofile 缓存命中
 local C    = dofile("/quad/config.lua")
 local IMU  = dofile("/quad/imu.lua")
 local Mix  = dofile("/quad/mixer.lua")
 local Ctrl = dofile("/quad/controller.lua")
+local GUI  = dofile("/quad/gui.lua")
 
--- state
+-- globals
 local imu_state = {}
 local running   = true
 local ctrl_dt   = 1 / C.CTRL_HZ
 local nav_dt    = 1 / C.NAV_HZ
+local start_t   = os.clock()
 
--- init
 local imu   = IMU.new()
 local mixer = Mix.new()
 local ctrl  = Ctrl.new()
+local gui   = GUI.new()
 
-print("[QUAD] Motors: " .. mixer:status())
-print("[QUAD] Type 'arm <alt>' to arm, 'help' for commands")
+-- build status table for GUI
+local function make_status()
+    local s = imu_state
+    return {
+        armed      = ctrl.armed,
+        mode       = ctrl.armed and "ARMED" or "IDLE",
+        pitch      = s.pitch      or 0,
+        roll       = s.roll       or 0,
+        yaw        = s.yaw        or 0,
+        alt        = s.altitude   or 0,
+        climb      = s.climb_rate or 0,
+        target_alt = ctrl.target_alt or 0,
+        target_yaw = ctrl.target_yaw or 0,
+        x          = s.x,
+        z          = s.z,
+        sensors    = imu:status(),
+        elapsed    = os.clock() - start_t,
+        throttle   = ctrl.throttle_out or 0,
+        rpm_max    = C.RPM_MAX,
+    }
+end
+
+local function make_motors()
+    local r = mixer.rpm or {0,0,0,0}
+    return {
+        fl       = r[1] or 0,
+        fr       = r[2] or 0,
+        br       = r[3] or 0,
+        bl       = r[4] or 0,
+        throttle = ctrl.throttle_out or 0,
+    }
+end
 
 -- ctrl loop 50Hz
 local function ctrlLoop()
     local last_t = os.clock()
     while running do
         local now = os.clock()
-        local dt  = now - last_t
+        local dt  = math.max(0.001, now - last_t)
         last_t    = now
-
-        imu_state = imu:read(dt)
-
+        imu_state = imu:read(dt) or imu_state
         if ctrl.armed then
             local po, ro, yo = ctrl:updateInner(imu_state, dt)
             mixer:mix(ctrl.throttle_out or C.RPM_HOVER, po, ro, yo)
         else
             mixer:allStop()
         end
-
         local sleep_t = ctrl_dt - (os.clock() - now)
         if sleep_t > 0.001 then os.sleep(sleep_t) end
     end
@@ -51,133 +78,178 @@ local function navLoop()
     local last_t = os.clock()
     while running do
         local now = os.clock()
-        local dt  = now - last_t
+        local dt  = math.max(0.001, now - last_t)
         last_t    = now
-
         ctrl:updateOuter(imu_state, dt)
-
         local sleep_t = nav_dt - (os.clock() - now)
         if sleep_t > 0.001 then os.sleep(sleep_t) end
     end
 end
 
--- help
-local function printHelp()
-    print("  arm [alt]           arm and take off to altitude (default 5)")
-    print("  disarm              disarm (stop all motors)")
-    print("  hover               hold current position")
-    print("  goto <x> <z> [alt]  fly to coords (needs GPS)")
-    print("  alt <h>             set target altitude")
-    print("  yaw <deg>           set target yaw")
-    print("  pos                 show attitude/position")
-    print("  motors              show motor RPM")
-    print("  land                land and disarm")
-    print("  quit                exit")
+-- render loop ~5Hz
+local function renderLoop()
+    while running do
+        if not gui.modal then
+            gui:render(make_status(), make_motors())
+        end
+        os.sleep(0.2)
+    end
 end
 
--- landing sequence
-local function doLand()
-    print("[QUAD] Landing...")
-    ctrl.target_alt = 0.3
-    os.sleep(3)
-    ctrl:disarm()
-    print("[QUAD] Landed and disarmed")
+-- command handler
+local function handle_cmd(line)
+    line = line:match("^%s*(.-)%s*$")
+    local parts = {}
+    for w in line:gmatch("%S+") do parts[#parts+1] = w end
+    local cmd = parts[1] or ""
+
+    if cmd == "help" then
+        gui:log("arm disarm hover goto alt yaw land pos motors quit", "INFO")
+    elseif cmd == "arm" then
+        local h = tonumber(parts[2]) or 5
+        ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
+        ctrl.target_alt = h
+        gui:log(string.format("Armed, target alt %.1f m", h), "OK")
+    elseif cmd == "disarm" then
+        ctrl:disarm()
+        gui:log("Disarmed", "WARN")
+    elseif cmd == "hover" then
+        ctrl:hover(imu_state)
+        gui:log("Hovering", "OK")
+    elseif cmd == "goto" then
+        if not imu_state.x then
+            gui:log("No GPS", "ERR")
+        else
+            local x   = tonumber(parts[2])
+            local z   = tonumber(parts[3])
+            local alt = tonumber(parts[4]) or ctrl.target_alt
+            if x and z then
+                ctrl.target_x   = x
+                ctrl.target_z   = z
+                ctrl.target_alt = alt
+                gui:log(string.format("Goto (%.1f,%.1f) alt %.1f", x, z, alt), "OK")
+            else
+                gui:log("Usage: goto <x> <z> [alt]", "WARN")
+            end
+        end
+    elseif cmd == "alt" then
+        local h = tonumber(parts[2])
+        if h then ctrl.target_alt = h
+            gui:log(string.format("Target alt -> %.1f m", h), "OK")
+        end
+    elseif cmd == "yaw" then
+        local y = tonumber(parts[2])
+        if y then ctrl.target_yaw = y % 360
+            gui:log(string.format("Target yaw -> %.1f deg", ctrl.target_yaw), "OK")
+        end
+    elseif cmd == "pos" then
+        local s = imu_state
+        gui:log(string.format("P%.1f R%.1f Y%.1f Alt%.2f Clmb%.2f",
+            s.pitch or 0, s.roll or 0, s.yaw or 0,
+            s.altitude or 0, s.climb_rate or 0), "INFO")
+    elseif cmd == "motors" then
+        local r = mixer.rpm or {0,0,0,0}
+        gui:log(string.format("FL%d FR%d BR%d BL%d",
+            r[1] or 0, r[2] or 0, r[3] or 0, r[4] or 0), "INFO")
+    elseif cmd == "land" then
+        gui:log("Landing...", "WARN")
+        ctrl.target_alt = 0.3
+        os.sleep(3)
+        ctrl:disarm()
+        gui:log("Landed", "OK")
+    elseif cmd == "quit" then
+        ctrl:disarm()
+        running = false
+        gui:log("Quit", "WARN")
+    elseif cmd ~= "" then
+        gui:log("Unknown: " .. cmd, "WARN")
+    end
+end
+
+-- button handler
+local function handle_button(action)
+    if action == "arm" then
+        local res = gui:dialog("ARM", {
+            { label="Target altitude (m):", default="5" },
+        })
+        if res then
+            local h = tonumber(res[1]) or 5
+            ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
+            ctrl.target_alt = h
+            gui:log(string.format("Armed, target alt %.1f m", h), "OK")
+        end
+    elseif action == "disarm" then
+        ctrl:disarm()
+        gui:log("Disarmed", "WARN")
+    elseif action == "hover" then
+        ctrl:hover(imu_state)
+        gui:log("Hovering", "OK")
+    elseif action == "land" then
+        ctrl.target_alt = 0.3
+        gui:log("Landing...", "WARN")
+    elseif action == "goto" then
+        local res = gui:dialog("GOTO", {
+            { label="X:", default="0" },
+            { label="Z:", default="0" },
+            { label="Alt (m):", default=tostring(math.floor(ctrl.target_alt or 5)) },
+        })
+        if res then
+            local x   = tonumber(res[1])
+            local z   = tonumber(res[2])
+            local alt = tonumber(res[3]) or ctrl.target_alt
+            if x and z then
+                ctrl.target_x   = x
+                ctrl.target_z   = z
+                ctrl.target_alt = alt
+                gui:log(string.format("Goto (%.1f,%.1f) alt %.1f", x, z, alt), "OK")
+            end
+        end
+    elseif action == "help" then
+        gui:log("arm disarm hover land goto alt yaw pos motors quit", "INFO")
+    end
 end
 
 -- input loop
 local function inputLoop()
     while running do
-        io.write("> ")
-        local line = io.read()
-        if not line then os.sleep(0.1) end
-        if line then
-        line = line:match("^%s*(.-)%s*$")  -- trim
-        local parts = {}
-        for w in line:gmatch("%S+") do parts[#parts+1] = w end
-        local cmd = parts[1] or ""
-
-        if cmd == "help" then
-            printHelp()
-
-        elseif cmd == "arm" then
-            local h = tonumber(parts[2]) or 5
-            ctrl:arm(imu_state.alt, imu_state.yaw)
-            ctrl.target_alt = h
-            print(string.format("[QUAD] Armed, target alt %.1f m", h))
-
-        elseif cmd == "disarm" then
-            ctrl:disarm()
-            print("[QUAD] Disarmed")
-
-        elseif cmd == "hover" then
-            ctrl:hover(imu_state)
-            print("[QUAD] Hovering")
-
-        elseif cmd == "goto" then
-            if not imu_state.x then
-                print("[QUAD] No GPS, cannot use goto")
-            else
-                local x   = tonumber(parts[2])
-                local z   = tonumber(parts[3])
-                local alt = tonumber(parts[4]) or ctrl.target_alt
-                if x and z then
-                    ctrl.target_x   = x
-                    ctrl.target_z   = z
-                    ctrl.target_alt = alt
-                    print(string.format("[QUAD] Goto (%.1f, %.1f) alt %.1f", x, z, alt))
-                else
-                    print("Usage: goto <x> <z> [alt]")
+        local ev, p1, p2, p3 = os.pullEvent()
+        if ev == "char" then
+            gui.input_buf = gui.input_buf .. p1
+            gui:drawInput()
+        elseif ev == "key" then
+            if p1 == keys.backspace then
+                if #gui.input_buf > 0 then
+                    gui.input_buf = gui.input_buf:sub(1, -2)
+                    gui:drawInput()
                 end
+            elseif p1 == keys.enter then
+                local line = gui.input_buf
+                gui.input_buf = ""
+                gui:drawInput()
+                handle_cmd(line)
             end
-
-        elseif cmd == "alt" then
-            local h = tonumber(parts[2])
-            if h then
-                ctrl.target_alt = h
-                print(string.format("[QUAD] Target alt -> %.1f m", h))
+        elseif ev == "mouse_click" then
+            local action = gui:hitButton(p2, p3)
+            if action then
+                gui:drawButtons(action)
+                handle_button(action)
+                gui:drawButtons()
             end
-
-        elseif cmd == "yaw" then
-            local y = tonumber(parts[2])
-            if y then
-                ctrl.target_yaw = y % 360
-                print(string.format("[QUAD] Target yaw -> %.1f deg", ctrl.target_yaw))
-            end
-
-        elseif cmd == "pos" then
-            local s = imu_state
-            if s.pitch then
-                print(string.format(
-                    "Att: P=%.1f R=%.1f Y=%.1f  Alt=%.2fm  Clmb=%.2fm/s",
-                    s.pitch or 0, s.roll or 0, s.yaw or 0,
-                    s.alt   or 0, s.climb or 0))
-                if s.x then
-                    print(string.format("Pos: X=%.2f  Z=%.2f", s.x, s.z))
-                end
-            else
-                print("[QUAD] IMU not ready")
-            end
-
-        elseif cmd == "motors" then
-            print("[QUAD] " .. mixer:status())
-
-        elseif cmd == "land" then
-            doLand()
-
-        elseif cmd == "quit" then
-            ctrl:disarm()
-            running = false
-            print("[QUAD] Quit")
-
-        elseif cmd ~= "" then
-            print("Unknown command '" .. cmd .. "', type help")
         end
-        end  -- if line
     end
 end
 
 -- main
-print("[QUAD] Starting, CTRL_HZ=" .. C.CTRL_HZ .. " NAV_HZ=" .. C.NAV_HZ)
-parallel.waitForAny(ctrlLoop, navLoop, inputLoop)
+gui:drawFrame()
+gui:log("Quad FC started  CTRL_HZ=" .. C.CTRL_HZ, "OK")
+gui:log("Motors: " .. mixer:status(), "INFO")
+gui:drawInput()
+
+parallel.waitForAny(ctrlLoop, navLoop, renderLoop, inputLoop)
+
 mixer:allStop()
-print("[QUAD] Stopped")
+term.setBackgroundColor(colors.black)
+term.setTextColor(colors.white)
+term.clear()
+term.setCursorPos(1, 1)
+print("Quad FC stopped.")
