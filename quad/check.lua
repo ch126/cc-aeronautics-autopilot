@@ -41,11 +41,19 @@ if #names == 0 then print("  (none)") end
 print("")
 
 -- check sensors
-local sensor_types = {"gimbal_sensor","altitude_sensor","velocity_sensor","Create_SpeedController"}
+local sensor_types = {"gimbal_sensor","altitude_sensor","velocity_sensor","Create_RotationSpeedController"}
 print("-- Key sensors --")
 for _, t in ipairs(sensor_types) do
     local p = peripheral.find(t)
-    print((p and "[OK] " or "[--] ") .. t)
+    local extra = ""
+    if p and t == "Create_RotationSpeedController" then
+        if type(p.setTargetSpeed) == "function" then
+            extra = " [setTargetSpeed OK]"
+        else
+            extra = " [WARN: no setTargetSpeed!]"
+        end
+    end
+    print((p and "[OK] " or "[--] ") .. t .. extra)
 end
 print("")
 print("If all files OK and Advanced=true, run:")

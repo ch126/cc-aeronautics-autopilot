@@ -27,6 +27,11 @@ local Mixer = {}
 Mixer.__index = Mixer
 
 -- find speed controllers, assign FL/FR/BR/BL in order
+local function validateMotor(p)
+    -- verify the peripheral actually has setTargetSpeed
+    return type(p.setTargetSpeed) == "function"
+end
+
 local function findMotors()
     local motors = {}
     local names = { C.MOTOR_FL, C.MOTOR_FR, C.MOTOR_BR, C.MOTOR_BL }
@@ -36,10 +41,10 @@ local function findMotors()
     for i, name in ipairs(names) do
         if name then
             local p = peripheral.wrap(name)
-            if p then
+            if p and validateMotor(p) then
                 motors[i] = { p=p, name=name, label=labels[i] }
             else
-                print("WARN: motor " .. labels[i] .. " '" .. name .. "' not found")
+                print("WARN: motor " .. labels[i] .. " '" .. name .. "' not found or no setTargetSpeed")
                 found_all = false
             end
         else
@@ -53,6 +58,10 @@ local function findMotors()
         local auto_idx  = 1
         for i = 1, 4 do
             if not motors[i] then
+                -- skip any that don't have setTargetSpeed
+                while auto_list[auto_idx] and not validateMotor(auto_list[auto_idx]) do
+                    auto_idx = auto_idx + 1
+                end
                 if auto_list[auto_idx] then
                     motors[i] = {
                         p     = auto_list[auto_idx],
