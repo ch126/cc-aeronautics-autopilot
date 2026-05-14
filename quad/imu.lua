@@ -142,16 +142,18 @@ function IMU:read(dt)
     end
     self.speed = math.sqrt(self.vx^2 + self.vz^2)
 
-    -- ── GPS 位置 ──────────────────────────────────────────
-    local gx, gy, gz = gps.locate(0.5)
+    self._init = true
+    return self
+end
+
+-- 单独调用，放在慢速循环（1~2Hz），避免阻塞控制环
+function IMU:readGPS()
+    local gx, gy, gz = gps.locate(2)
     if gx then
         self.x = gx
         self.y = gy
         self.z = gz
     end
-
-    self._init = true
-    return self
 end
 
 function IMU:status()

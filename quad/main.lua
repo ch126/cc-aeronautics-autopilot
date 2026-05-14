@@ -130,6 +130,14 @@ local function renderLoop()
     end
 end
 
+-- GPS loop ~1Hz (独立循环，避免阻塞控制环)
+local function gpsLoop()
+    while running do
+        imu:readGPS()
+        os.sleep(1.0)
+    end
+end
+
 -- command handler
 local function handle_cmd(line)
     line = line:match("^%s*(.-)%s*$")
@@ -295,7 +303,7 @@ gui:log("Quad FC started  CTRL_HZ=" .. C.CTRL_HZ, "OK")
 gui:log("Motors: " .. mixer:status(), "INFO")
 gui:drawInput()
 
-parallel.waitForAny(ctrlLoop, navLoop, renderLoop, inputLoop)
+parallel.waitForAny(ctrlLoop, navLoop, renderLoop, gpsLoop, inputLoop)
 
 mixer:allStop()
 term.setBackgroundColor(colors.black)
