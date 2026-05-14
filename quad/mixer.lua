@@ -129,10 +129,12 @@ function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
     local dr = roll_out  * half_range * 0.5
     local dy = yaw_out   * half_range * 0.3
 
-    local r1 = throttle + dp + dr - dy   -- M1 FL CCW
-    local r2 = throttle + dp - dr + dy   -- M2 FR CW
-    local r3 = throttle - dp - dr - dy   -- M3 BR CCW
-    local r4 = throttle - dp + dr + dy   -- M4 BL CW
+    -- negate dp/dr: sensor positive = nose-up/right-tilt,
+    -- correction needs opposite motor response
+    local r1 = throttle - dp + dr - dy   -- M1 FL CCW
+    local r2 = throttle - dp - dr + dy   -- M2 FR CW
+    local r3 = throttle + dp - dr - dy   -- M3 BR CCW
+    local r4 = throttle + dp + dr + dy   -- M4 BL CW
 
     local max_r = math.max(r1, r2, r3, r4)
     local min_r = math.min(r1, r2, r3, r4)
