@@ -115,9 +115,10 @@ function Ctrl:updateOuter(imu_state, dt)
     local dvx_b =  cy * dvx + sy * dvz
     local dvz_b = -sy * dvx + cy * dvz
 
-    -- 速度死区：绝对速度很小时不产生倾斜指令，避免噪声引发振荡
+    -- 速度死区：仅在纯悬停（无 goto 目标）且速度极小时才置零
     local VEL_DB = 0.12  -- m/s
-    if math.abs(vx) < VEL_DB and math.abs(vz) < VEL_DB and target_vx == 0 and target_vz == 0 then
+    local has_pos_target = (self.target_x ~= nil)
+    if not has_pos_target and math.abs(vx) < VEL_DB and math.abs(vz) < VEL_DB then
         dvx_b, dvz_b = 0, 0
     end
 
@@ -125,15 +126,17 @@ function Ctrl:updateOuter(imu_state, dt)
     local raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
 
     -- ── 设定值平滑（一阶低通，防止阶跃输入）─────────────────
-    local SP_ALPHA = C.SP_SMOOTH or 0.08
+    -- goto模式用更快的alpha，让飞机及时响应位置指令
+    local SP_ALPHA = has_pos_target and 0.25 or (C.SP_SMOOTH or 0.08)
     self.target_pitch = self.target_pitch + SP_ALPHA * (raw_pitch - self.target_pitch)
     self.target_roll  = self.target_roll  + SP_ALPHA * (raw_roll  - self.target_roll)
 
-    -- ── 设定值衰减：无外部指令时缓慢归零，防止传感器漂移积累 ──
-    -- 等效于对 target_pitch/roll 加一个弱弹簧拉向0
-    local DECAY = 0.05  -- 每次外环衰减5%
-    self.target_pitch = self.target_pitch * (1.0 - DECAY)
-    self.target_roll  = self.target_roll  * (1.0 - DECAY)
+    -- ── 设定值衰减：仅悬停模式下防传感器漂移，goto模式不衰减 ──
+    if not has_pos_target then
+        local DECAY = 0.05
+        self.target_pitch = self.target_pitch * (1.0 - DECAY)
+        self.target_roll  = self.target_roll  * (1.0 - DECAY)
+    end
 end
 
 -- inner loop: attitude  (call at CTRL_HZ ~20Hz)
