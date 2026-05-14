@@ -277,7 +277,20 @@ end
 
 -- 单独调用，放在慢速循环（1~2Hz），避免阻塞控制环
 function IMU:readGPS()
-    -- GPS 已禁用
+    -- 用 CC 原生 GPS 定位（需要地图上有 GPS 卫星方块）
+    -- 超时 0.1 秒，避免阻塞控制环（gpsLoop 在独立协程里调用）
+    local wx, wy, wz = gps.locate(0.1)
+    if wx then
+        if self._origin_x == nil then
+            self._origin_x = wx
+            self._origin_z = wz
+        end
+        self.x      = wx - self._origin_x
+        self.z      = wz - self._origin_z
+        self.gps_ok = true
+    else
+        self.gps_ok = false
+    end
 end
 
 function IMU:status()
