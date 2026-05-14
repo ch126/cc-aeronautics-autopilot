@@ -92,20 +92,32 @@ function Mixer.new()
         for i = 1, 4 do if self.motors[i] then cnt = cnt + 1 end end
         print("Mixer: direct mode  " .. cnt .. "/4 motors found")
     end
-    self.rpm = {0, 0, 0, 0}
+    self.rpm      = {0, 0, 0, 0}
+    self.rpm_filt = {0, 0, 0, 0}  -- 低通滤波后的实际发送值（模拟电机惯性）
     return self
 end
 
 -- ── internal: apply 4 RPM values ─────────────────────────────
+-- MOTOR_ALPHA: 电机一阶低通滤波系数
+-- 真实螺旋桨有惯性，RPM不能瞬间到达目标值
+-- alpha越小=电机响应越慢（越重的桨用越小的值）
+-- 20Hz下 alpha=0.4 约等于时间常数 ~75ms
+local MOTOR_ALPHA = 0.4
+
 local function applyRPMs(self, r1, r2, r3, r4)
     self.rpm = {r1, r2, r3, r4}
+    -- 一阶低通：模拟电机加速惯性
+    local f = self.rpm_filt
+    f[1] = f[1] + MOTOR_ALPHA * (r1 - f[1])
+    f[2] = f[2] + MOTOR_ALPHA * (r2 - f[2])
+    f[3] = f[3] + MOTOR_ALPHA * (r3 - f[3])
+    f[4] = f[4] + MOTOR_ALPHA * (r4 - f[4])
     if use_slaves then
-        -- send to each slave computer
-        local rpms = {r1, r2, r3, r4}
+        -- send filtered RPM to each slave computer
         for i = 1, 4 do
             if slave_ids[i] then
                 rednet.send(slave_ids[i],
-                    { idx = i, rpm = math.floor(rpms[i] + 0.5) },
+                    { idx = i, rpm = math.floor(f[i] + 0.5) },
                     C.MOTOR_PROTOCOL)
             end
         end
@@ -115,10 +127,10 @@ local function applyRPMs(self, r1, r2, r3, r4)
             rpm = math.max(C.RPM_MIN, math.min(C.RPM_MAX, rpm))
             motor.p.setTargetSpeed(math.floor(rpm + 0.5))
         end
-        set(self.motors[1], r1)
-        set(self.motors[2], r2)
-        set(self.motors[3], r3)
-        set(self.motors[4], r4)
+        set(self.motors[1], f[1])
+        set(self.motors[2], f[2])
+        set(self.motors[3], f[3])
+        set(self.motors[4], f[4])
     end
 end
 
@@ -176,6 +188,7 @@ function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
 end
 
 function Mixer:allStop()
+    self.rpm_filt = {0, 0, 0, 0}
     applyRPMs(self, 0, 0, 0, 0)
 end
 
