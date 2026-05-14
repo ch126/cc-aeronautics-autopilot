@@ -45,6 +45,8 @@ while true do
     if type(msg) == "table" and type(msg.rpm) == "number" then
         local rpm = math.floor(msg.rpm + 0.5)
         gear.setTargetSpeed(rpm)
+        -- reply ACK to master
+        rednet.send(sender, { ack = true, id = my_id, rpm = rpm }, PROTOCOL)
         -- show on screen
         term.setCursorPos(1, 9)
         term.clearLine()

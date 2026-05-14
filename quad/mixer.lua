@@ -37,7 +37,7 @@ local function findMotors()
     local labels = { "FL", "FR", "BR", "BL" }
     local found_all = true
     for i, name in ipairs(names) do
-        if name then
+        if type(name) == "string" then
             local p = peripheral.wrap(name)
             if p then
                 motors[i] = { p=p, name=name, label=labels[i] }
