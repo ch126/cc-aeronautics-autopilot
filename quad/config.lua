@@ -77,31 +77,30 @@ C.ATT_MAX        = 15.0  -- max target pitch/roll from position loop (deg)
 C.RATE_MAX       = 180.0 -- max target rate from attitude loop (deg/s)
 
 -- ── 内环 PID：姿态角速度（最内层，20Hz）─────────────────────────
--- 输入：目标角速度(°/s) - 实际角速度(°/s)，输出：RPM差量
-C.PID_RATE_PITCH = { kp=0.3,  ki=0.005,kd=0.0,  imax=8,  omax=25 }
-C.PID_RATE_ROLL  = { kp=0.3,  ki=0.005,kd=0.0,  imax=8,  omax=25 }
-C.PID_RATE_YAW   = { kp=0.5,  ki=0.01, kd=0.0,  imax=8,  omax=20 }
+C.PID_RATE_PITCH = { kp=0.15, ki=0.002,kd=0.0,  imax=5,  omax=15 }
+C.PID_RATE_ROLL  = { kp=0.15, ki=0.002,kd=0.0,  imax=5,  omax=15 }
+C.PID_RATE_YAW   = { kp=0.3,  ki=0.005,kd=0.0,  imax=5,  omax=12 }
 
 -- ── 中环 PID：姿态角（20Hz）──────────────────────────────────────
--- 输入：目标角度(deg) - 实际角度(deg)，输出：目标角速度(°/s)
-C.PID_ATT_PITCH  = { kp=2.5,  ki=0.0,  kd=0.0,  imax=0,  omax=60  }
-C.PID_ATT_ROLL   = { kp=2.5,  ki=0.0,  kd=0.0,  imax=0,  omax=60  }
-C.PID_ATT_YAW    = { kp=2.0,  ki=0.02, kd=0.0,  imax=20, omax=60  }
+C.PID_ATT_PITCH  = { kp=1.5,  ki=0.0,  kd=0.0,  imax=0,  omax=45  }
+C.PID_ATT_ROLL   = { kp=1.5,  ki=0.0,  kd=0.0,  imax=0,  omax=45  }
+C.PID_ATT_YAW    = { kp=1.5,  ki=0.02, kd=0.0,  imax=15, omax=45  }
 
 -- ── 高度级联参数 ───────────────────────────────────────────────
-C.ALT_POS_GAIN   = 2.0   -- alt_err -> target_climb (m/s per block)
-C.ALT_MAX_CLIMB  = 1.5   -- max target climb rate (m/s)
-C.ALT_VEL_GAIN   = 20.0  -- climb_err -> thr_delta (RPM per m/s)
-C.ALT_MAX_DELTA  = 80    -- max throttle delta (RPM)
-C.ALT_I_GAIN     = 0.02  -- altitude integrator gain
-C.ALT_I_MAX      = 20    -- altitude integrator clamp (RPM)
+C.ALT_POS_GAIN   = 1.5   -- alt_err -> target_climb (m/s per block)
+C.ALT_MAX_CLIMB  = 1.0   -- max target climb rate (m/s)
+C.ALT_VEL_GAIN   = 15.0  -- climb_err -> thr_delta (RPM per m/s)
+C.ALT_MAX_DELTA  = 50    -- max throttle delta (RPM)
+C.ALT_I_GAIN     = 0.015 -- altitude integrator gain
+C.ALT_I_MAX      = 15    -- altitude integrator clamp (RPM)
 
 -- ── 水平位置级联参数 ────────────────────────────────────────────
-C.POS_GAIN       = 0.2   -- pos_err -> target_vel (m/s per block)
-C.POS_MAX_VEL    = 0.6   -- max target velocity (m/s)
-C.POS_DEADBAND   = 0.8   -- GPS 死区：误差小于此值时不修正 (blocks)
-C.VEL_GAIN       = 1.2   -- vel_err -> tilt angle (deg per m/s)
-C.SP_SMOOTH      = 0.25  -- 设定值平滑系数（0=完全平滑, 1=无平滑）
+C.POS_GAIN       = 0.15  -- pos_err -> target_vel (m/s per block)
+C.POS_MAX_VEL    = 0.4   -- max target velocity (m/s)
+C.POS_DEADBAND   = 0.8   -- GPS 死区 (blocks)
+C.VEL_GAIN       = 0.8   -- vel_err -> tilt angle (deg per m/s)
+C.ATT_MAX        = 10.0  -- max target pitch/roll (deg)
+C.SP_SMOOTH      = 0.15  -- 设定值平滑（越小越平滑）
 
 -- ── 外环 PID：高度（10Hz）────────────────────────────────────────
 C.PID_ALT        = { kp=5.0,  ki=0.05, kd=0.0,  imax=10, omax=50  }

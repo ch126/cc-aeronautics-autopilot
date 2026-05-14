@@ -86,7 +86,7 @@ function Ctrl:updateOuter(imu_state, dt)
     -- 补偿：将油门除以倾斜因子，维持恒定升力
     local cp = math.cos(math.rad(pitch))
     local cr = math.cos(math.rad(roll))
-    local tilt_factor = math.max(cp * cr, 0.5)  -- 防止极端倾角时爆炸
+    local tilt_factor = math.max(cp * cr, 0.75)  -- 限制最大补偿25%，减小震荡正反馈
     local base_thr = clamp(C.RPM_HOVER + thr_delta + self._alt_i, C.RPM_MIN, C.RPM_MAX)
     self.throttle_out = clamp(base_thr / tilt_factor, C.RPM_MIN, C.RPM_MAX)
 
