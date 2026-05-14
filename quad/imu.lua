@@ -119,7 +119,7 @@ function IMU:read(dt)
         if ok and type(v) == "number" then
             if self._prev_alt and dt and dt > 0 then
                 local raw_climb = (v - self._prev_alt) / dt
-                self.climb_rate = ema(self.climb_rate, raw_climb, 0.5)  -- 0.5 快速跟踪
+                self.climb_rate = ema(self.climb_rate, raw_climb, 0.25)  -- 0.25 平滑跟踪，减少噪声
             end
             self._prev_alt = v
             self.altitude  = v

@@ -99,11 +99,11 @@ C.PID_ATT_ROLL   = { kp=25.0, ki=0.0,  kd=3.0,  dmax=30, imax=0,  omax=120 }
 C.PID_ATT_YAW    = { kp=18.0, ki=0.1,  kd=1.5,  dmax=20, imax=30, omax=90  }
 
 -- ── 高度级联参数 ───────────────────────────────────────────────
-C.ALT_POS_GAIN   = 1.5   -- alt_err -> target_climb (m/s per block)
-C.ALT_MAX_CLIMB  = 1.5   -- max target climb rate (m/s)
-C.ALT_VEL_GAIN   = 20.0  -- climb_err -> thr_delta (RPM per m/s)
-C.ALT_MAX_DELTA  = 80    -- max throttle delta (RPM)
-C.ALT_I_GAIN     = 0.015 -- altitude integrator gain
+C.ALT_POS_GAIN   = 1.0   -- alt_err -> target_climb (m/s per block)
+C.ALT_MAX_CLIMB  = 1.0   -- max target climb rate (m/s)
+C.ALT_VEL_GAIN   = 10.0  -- climb_err -> thr_delta (RPM per m/s)
+C.ALT_MAX_DELTA  = 40    -- max throttle delta (RPM)
+C.ALT_I_GAIN     = 0.01  -- altitude integrator gain
 C.ALT_I_MAX      = 15    -- altitude integrator clamp (RPM)
 
 -- ── 水平位置级联参数 ────────────────────────────────────────────
