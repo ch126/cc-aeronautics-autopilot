@@ -132,7 +132,7 @@ function IMU:read(dt)
     if self.vel_z_p then
         local ok, v = pcall(function() return self.vel_z_p.getVelocity() end)
         if ok and type(v) == "number" then
-            self.vz = v
+            self.vz = -v  -- Z轴传感器方向相反，取反
         end
     end
     self.speed = math.sqrt(self.vx^2 + self.vz^2)
