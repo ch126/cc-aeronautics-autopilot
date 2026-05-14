@@ -77,9 +77,9 @@ C.ATT_MAX        = 15.0  -- max target pitch/roll from position loop (deg)
 C.RATE_MAX       = 180.0 -- max target rate from attitude loop (deg/s)
 
 -- ── 内环 PID：姿态角速度（最内层，20Hz）─────────────────────────
-C.PID_RATE_PITCH = { kp=0.15, ki=0.002,kd=0.0,  imax=5,  omax=15 }
-C.PID_RATE_ROLL  = { kp=0.15, ki=0.002,kd=0.0,  imax=5,  omax=15 }
-C.PID_RATE_YAW   = { kp=0.3,  ki=0.005,kd=0.0,  imax=5,  omax=12 }
+C.PID_RATE_PITCH = { kp=0.12, ki=0.0,  kd=0.0,  imax=0,  omax=12 }
+C.PID_RATE_ROLL  = { kp=0.12, ki=0.0,  kd=0.0,  imax=0,  omax=12 }
+C.PID_RATE_YAW   = { kp=0.25, ki=0.0,  kd=0.0,  imax=0,  omax=10 }
 
 -- ── 中环 PID：姿态角（20Hz）──────────────────────────────────────
 C.PID_ATT_PITCH  = { kp=1.5,  ki=0.0,  kd=0.0,  imax=0,  omax=45  }

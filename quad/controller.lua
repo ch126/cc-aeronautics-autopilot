@@ -114,6 +114,12 @@ function Ctrl:updateOuter(imu_state, dt)
     local dvx_b =  cy * dvx + sy * dvz
     local dvz_b = -sy * dvx + cy * dvz
 
+    -- 速度死区：绝对速度很小时不产生倾斜指令，避免噪声引发振荡
+    local VEL_DB = 0.12  -- m/s
+    if math.abs(vx) < VEL_DB and math.abs(vz) < VEL_DB and target_vx == 0 and target_vz == 0 then
+        dvx_b, dvz_b = 0, 0
+    end
+
     local raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
     local raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
 
