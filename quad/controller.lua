@@ -76,12 +76,13 @@ function Ctrl:updateOuter(imu_state, dt)
     local climb = imu_state.climb_rate or 0
 
     -- stage 1: altitude error -> target climb rate (m/s)
-    local alt_err        = self.target_alt - alt
-    local target_climb   = clamp(alt_err * 3.0, -C.MAX_CLIMB, C.MAX_CLIMB)
+    -- use smaller max climb so it decelerates earlier
+    local alt_err      = self.target_alt - alt
+    local target_climb = clamp(alt_err * 2.0, -1.5, 1.5)
 
     -- stage 2: climb rate error -> throttle delta (RPM)
-    local climb_err  = target_climb - climb
-    local thr_delta  = clamp(climb_err * 12.0, -80, 80)
+    local climb_err = target_climb - climb
+    local thr_delta = clamp(climb_err * 20.0, -80, 80)
 
     -- slow integrator to trim hover offset
     self._alt_i = (self._alt_i or 0) + alt_err * 0.02 * dt
