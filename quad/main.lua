@@ -87,35 +87,23 @@ local function make_motors()
     }
 end
 
--- ctrl loop 50Hz
+-- ctrl loop 20Hz：内环 + 外环合并，减少调度延迟
 local function ctrlLoop()
-    local last_t = os.clock()
+    local last_t  = os.clock()
     while running do
         local now = os.clock()
-        local dt  = math.max(0.001, now - last_t)
+        local dt  = math.max(0.001, math.min(now - last_t, 0.2))
         last_t    = now
         imu:read(dt)
-        imu_state = imu  -- imu object IS the state table
+        imu_state = imu
         if ctrl.armed then
+            ctrl:updateOuter(imu_state, dt)
             local po, ro, yo = ctrl:updateInner(imu_state, dt)
             mixer:mix(ctrl.throttle_out or C.RPM_HOVER, po, ro, yo)
         else
             mixer:allStop()
         end
         local sleep_t = ctrl_dt - (os.clock() - now)
-        if sleep_t > 0.001 then os.sleep(sleep_t) end
-    end
-end
-
--- nav loop 10Hz
-local function navLoop()
-    local last_t = os.clock()
-    while running do
-        local now = os.clock()
-        local dt  = math.max(0.001, now - last_t)
-        last_t    = now
-        ctrl:updateOuter(imu_state, dt)
-        local sleep_t = nav_dt - (os.clock() - now)
         if sleep_t > 0.001 then os.sleep(sleep_t) end
     end
 end
@@ -303,7 +291,7 @@ gui:log("Quad FC started  CTRL_HZ=" .. C.CTRL_HZ, "OK")
 gui:log("Motors: " .. mixer:status(), "INFO")
 gui:drawInput()
 
-parallel.waitForAny(ctrlLoop, navLoop, renderLoop, gpsLoop, inputLoop)
+parallel.waitForAny(ctrlLoop, renderLoop, gpsLoop, inputLoop)
 
 mixer:allStop()
 term.setBackgroundColor(colors.black)

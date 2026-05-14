@@ -55,10 +55,10 @@ C.RPM_HOVER    = 64     -- 悬停基础转速（需根据机体重量标定）
 C.RPM_IDLE     = 0      -- 解锁后待机转速
 
 -- ── 控制频率 ───────────────────────────────────────────────────
-C.CTRL_HZ      = 50     -- 内环（姿态）控制频率 Hz
-C.NAV_HZ       = 10     -- 外环（位置）控制频率 Hz
-C.CTRL_DT      = 1 / 50 -- 内环 dt
-C.NAV_DT       = 1 / 10 -- 外环 dt
+C.CTRL_HZ      = 20     -- 内环（姿态）控制频率 Hz（CC服务器tick上限~20Hz）
+C.NAV_HZ       = 20     -- 外环（位置）控制频率 Hz（与内环合并，减少延迟）
+C.CTRL_DT      = 1 / 20 -- 内环 dt
+C.NAV_DT       = 1 / 20 -- 外环 dt
 
 -- ── 传感器外设名称（nil=自动扫描）─────────────────────────────
 C.SENSOR_GIMBAL   = nil  -- gimbal_sensor  -> getAngles() {pitch,roll,yaw}
@@ -76,17 +76,17 @@ C.ALT_THRESHOLD  = 0.5   -- altitude deadband (blocks)
 C.ATT_MAX        = 25.0  -- max target pitch/roll from position loop (deg)
 C.RATE_MAX       = 180.0 -- max target rate from attitude loop (deg/s)
 
--- ── 内环 PID：姿态角速度（最内层，50Hz）─────────────────────────
+-- ── 内环 PID：姿态角速度（最内层，20Hz）─────────────────────────
 -- 输入：目标角速度(°/s) - 实际角速度(°/s)，输出：RPM差量
-C.PID_RATE_PITCH = { kp=0.6,  ki=0.01, kd=0.02, imax=10, omax=40 }
-C.PID_RATE_ROLL  = { kp=0.6,  ki=0.01, kd=0.02, imax=10, omax=40 }
-C.PID_RATE_YAW   = { kp=0.8,  ki=0.01, kd=0.01, imax=10, omax=30 }
+C.PID_RATE_PITCH = { kp=0.5,  ki=0.01, kd=0.01, imax=10, omax=40 }
+C.PID_RATE_ROLL  = { kp=0.5,  ki=0.01, kd=0.01, imax=10, omax=40 }
+C.PID_RATE_YAW   = { kp=0.6,  ki=0.01, kd=0.0,  imax=10, omax=30 }
 
--- ── 中环 PID：姿态角（50Hz）──────────────────────────────────────
+-- ── 中环 PID：姿态角（20Hz）──────────────────────────────────────
 -- 输入：目标角度(deg) - 实际角度(deg)，输出：目标角速度(°/s)
-C.PID_ATT_PITCH  = { kp=3.0,  ki=0.0,  kd=0.0,  imax=0,  omax=120 }
-C.PID_ATT_ROLL   = { kp=3.0,  ki=0.0,  kd=0.0,  imax=0,  omax=120 }
-C.PID_ATT_YAW    = { kp=2.0,  ki=0.02, kd=0.05, imax=20, omax=90  }
+C.PID_ATT_PITCH  = { kp=4.0,  ki=0.0,  kd=0.0,  imax=0,  omax=120 }
+C.PID_ATT_ROLL   = { kp=4.0,  ki=0.0,  kd=0.0,  imax=0,  omax=120 }
+C.PID_ATT_YAW    = { kp=2.5,  ki=0.02, kd=0.0,  imax=20, omax=90  }
 
 -- ── 高度级联参数 ───────────────────────────────────────────────
 C.ALT_POS_GAIN   = 2.0   -- alt_err -> target_climb (m/s per block)

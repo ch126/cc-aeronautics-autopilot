@@ -95,11 +95,11 @@ function IMU:read(dt)
             local new_roll  = tonumber(v[2] or v.roll)  or 0
             local new_yaw   = tonumber(v[3] or v.yaw)   or 0
 
-            -- 角速度：有限差分 + EMA 平滑
+            -- 角速度：有限差分 + EMA 平滑（alpha 0.6 = 快速响应）
             if self._init and dt and dt > 0 then
-                self.rate_p = ema(self.rate_p, angDiff(new_pitch, self._prev.pitch)/dt, 0.4)
-                self.rate_q = ema(self.rate_q, angDiff(new_roll,  self._prev.roll )/dt, 0.4)
-                self.rate_r = ema(self.rate_r, angDiff(new_yaw,   self._prev.yaw  )/dt, 0.4)
+                self.rate_p = ema(self.rate_p, angDiff(new_pitch, self._prev.pitch)/dt, 0.6)
+                self.rate_q = ema(self.rate_q, angDiff(new_roll,  self._prev.roll )/dt, 0.6)
+                self.rate_r = ema(self.rate_r, angDiff(new_yaw,   self._prev.yaw  )/dt, 0.6)
             end
 
             self._prev.pitch = new_pitch
@@ -118,7 +118,7 @@ function IMU:read(dt)
         if ok and type(v) == "number" then
             if self._prev_alt and dt and dt > 0 then
                 local raw_climb = (v - self._prev_alt) / dt
-                self.climb_rate = ema(self.climb_rate, raw_climb, 0.3)
+                self.climb_rate = ema(self.climb_rate, raw_climb, 0.5)  -- 0.5 快速跟踪
             end
             self._prev_alt = v
             self.altitude  = v
