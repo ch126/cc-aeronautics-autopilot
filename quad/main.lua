@@ -208,6 +208,12 @@ local function handle_cmd(line)
             s.x or 0, s.z or 0, s.vx or 0, s.vz or 0,
             ctrl.target_x and string.format("%.2f", ctrl.target_x) or "nil",
             ctrl.target_z and string.format("%.2f", ctrl.target_z) or "nil"), "INFO")
+        if ctrl.dbg then
+            local d = ctrl.dbg
+            gui:log(string.format("tvx=%.3f tvz=%.3f dvx_b=%.3f dvz_b=%.3f rp=%.2f rr=%.2f",
+                d.tvx or 0, d.tvz or 0, d.dvx_b or 0, d.dvz_b or 0,
+                d.rp or 0, d.rr or 0), "INFO")
+        end
     elseif cmd == "motors" then
         local r = mixer.rpm or {0,0,0,0}
         gui:log(string.format("FL%d FR%d BR%d BL%d",

@@ -115,8 +115,8 @@ function Ctrl:updateOuter(imu_state, dt)
     local dvx_b =  cy * dvx + sy * dvz
     local dvz_b = -sy * dvx + cy * dvz
 
-    -- 速度死区：仅在纯悬停（无 goto 目标）且速度极小时才置零
-    local VEL_DB = 0.25  -- m/s，加大死区覆盖气流噪声
+    -- 速度死区：仅在纯悬停（无位置目标）且速度极小时才置零
+    local VEL_DB = 0.25
     local has_pos_target = (self.target_x ~= nil)
     if not has_pos_target and math.abs(vx) < VEL_DB and math.abs(vz) < VEL_DB then
         dvx_b, dvz_b = 0, 0
@@ -124,6 +124,15 @@ function Ctrl:updateOuter(imu_state, dt)
 
     local raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
     local raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+
+    -- 诊断信息（供 pos 命令读取）
+    self.dbg = {
+        x=imu_state.x, z=imu_state.z,
+        tx=self.target_x, tz=self.target_z,
+        tvx=target_vx, tvz=target_vz,
+        dvx_b=dvx_b, dvz_b=dvz_b,
+        rp=raw_pitch, rr=raw_roll,
+    }
 
     -- ── 设定值平滑（一阶低通，防止阶跃输入）─────────────────
     -- goto模式用更快的alpha，让飞机及时响应位置指令
