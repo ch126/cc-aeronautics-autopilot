@@ -165,53 +165,60 @@ function IMU:read(dt)
         end
     end
 
-    -- ── 航位推算：速度积分得相对位置 ──────────────────────
+    -- ── 航位推算：速度积分得相对位置（有速度传感器时才有效）──
     if self._init and dt and dt > 0 then
         self.x = self.x + self.vx * dt
         self.z = self.z + self.vz * dt
     end
 
-    -- ── 导航台 Yaw + 位置修正（互补滤波）─────────────────────
+    -- ── 导航台 Yaw + 位置估计 ───────────────────────────────────
     if self.nav_p and C.NAV_BEACON_BEARING then
         local ok, rel = pcall(function() return self.nav_p.getRelativeAngle() end)
         if ok and type(rel) == "number" then
-            -- ① Yaw 修正：飞机绝对朝向 = 信标绝对方位角 - 相对角
+            -- ① Yaw 修正
             local nav_yaw = (C.NAV_BEACON_BEARING - rel) % 360
-            local alpha = C.NAV_YAW_ALPHA or 0.98
+            local yaw_alpha = C.NAV_YAW_ALPHA or 0.98
             local diff = (nav_yaw - self.yaw) % 360
             if diff > 180 then diff = diff - 360 end
-            self.yaw = (self.yaw + (1.0 - alpha) * diff) % 360
+            self.yaw = (self.yaw + (1.0 - yaw_alpha) * diff) % 360
 
-            -- ② 位置修正：飞机到信标的绝对方位角 = yaw + relativeAngle
+            -- ② 位置估计：从方位角直接计算横向绝对位移
+            -- 原理：若飞机在起飞原点(0,0)，看到信标的方位角应为 hold_bearing
+            -- 实际测量到 measured_bearing，差值对应横向漂移量
             if C.NAV_BEACON_X ~= nil and C.NAV_BEACON_Z ~= nil then
-                -- 导航台测量：飞机鼻指向 + 相对角 = 信标绝对方位角
-                local measured_bearing_deg = (self.yaw + rel) % 360
-                local measured_bearing_rad = math.rad(measured_bearing_deg)
+                -- 从原点到信标的已知距离和方向
+                local bx = C.NAV_BEACON_X
+                local bz = C.NAV_BEACON_Z
+                local dist_origin = math.sqrt(bx * bx + bz * bz)
 
-                -- DR预测：从当前估计位置看信标的方位角
-                local dbx = C.NAV_BEACON_X - self.x
-                local dbz = C.NAV_BEACON_Z - self.z
-                local dist = math.sqrt(dbx * dbx + dbz * dbz)
+                if dist_origin > 1.0 then
+                    -- 从原点看信标的期望方位角（固定值）
+                    local hold_bearing_rad = math.atan(bx, bz)
+                    -- 当前测量到的信标方位角
+                    local measured_bearing_rad = math.rad((self.yaw + rel) % 360)
 
-                if dist > 1.0 then
-                    -- atan2(X, Z)：北=+Z时朝向，北=0°，东=90°
-                    local expected_bearing_rad = math.atan(dbx, dbz)
-
-                    -- 方位角误差（DR与测量的差）
-                    local bearing_err = measured_bearing_rad - expected_bearing_rad
+                    -- 方位角误差
+                    local bearing_err = measured_bearing_rad - hold_bearing_rad
                     while bearing_err >  math.pi do bearing_err = bearing_err - 2*math.pi end
                     while bearing_err < -math.pi do bearing_err = bearing_err + 2*math.pi end
 
-                    -- 横向位置误差 = dist × sin(角度差)
-                    -- 修正方向：垂直于信标视线，顺时针为正
-                    local lateral = dist * math.sin(bearing_err)
-                    -- 垂直于信标方向的单位向量（右手）
-                    local perp_x =  math.cos(expected_bearing_rad)
-                    local perp_z = -math.sin(expected_bearing_rad)
+                    -- 横向位移 = dist_origin × sin(方位角误差)
+                    -- 正值 = 向右漂移（顺时针偏，beacon 偏左）
+                    local lateral = dist_origin * math.sin(bearing_err)
 
-                    local pa = C.NAV_POS_ALPHA or 0.05
-                    self.x = self.x + pa * lateral * perp_x
-                    self.z = self.z + pa * lateral * perp_z
+                    -- 横向方向单位向量（垂直于 hold_bearing，指向右）
+                    local perp_x =  math.cos(hold_bearing_rad)
+                    local perp_z = -math.sin(hold_bearing_rad)
+
+                    -- 导航台直接给出横向位置：用较大 alpha 快速收敛
+                    local nav_x = lateral * perp_x
+                    local nav_z = lateral * perp_z
+                    local pa = C.NAV_POS_ALPHA or 0.3
+                    self.x = self.x + pa * (nav_x - self.x)
+                    self.z = self.z + pa * (nav_z - self.z)
+
+                    -- 暴露给 controller 的原始横向误差（blocks）
+                    self.nav_lateral = lateral
                 end
             end
         end

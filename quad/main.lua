@@ -204,10 +204,11 @@ local function handle_cmd(line)
         gui:log(string.format("P%.1f R%.1f Y%.1f Alt%.2f Clmb%.2f",
             s.pitch or 0, s.roll or 0, s.yaw or 0,
             s.altitude or 0, s.climb_rate or 0), "INFO")
-        gui:log(string.format("x=%.2f z=%.2f vx=%.3f vz=%.3f tx=%s tz=%s",
+        gui:log(string.format("x=%.2f z=%.2f vx=%.3f vz=%.3f tx=%s tz=%s nav_lat=%.2f",
             s.x or 0, s.z or 0, s.vx or 0, s.vz or 0,
             ctrl.target_x and string.format("%.2f", ctrl.target_x) or "nil",
-            ctrl.target_z and string.format("%.2f", ctrl.target_z) or "nil"), "INFO")
+            ctrl.target_z and string.format("%.2f", ctrl.target_z) or "nil",
+            imu.nav_lateral or 0), "INFO")
         if ctrl.dbg then
             local d = ctrl.dbg
             gui:log(string.format("tvx=%.3f tvz=%.3f dvx_b=%.3f dvz_b=%.3f rp=%.2f rr=%.2f",

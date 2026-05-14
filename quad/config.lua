@@ -81,7 +81,7 @@ C.NAV_YAW_ALPHA      = 0.98  -- 0.98 = 慢速漂移修正，快速旋转靠gimba
 -- 设为 nil 则只用方位角修正 yaw，不修正位置
 C.NAV_BEACON_X   = nil   -- 信标相对起飞点的 X 坐标 (blocks)
 C.NAV_BEACON_Z   = nil   -- 信标相对起飞点的 Z 坐标 (blocks)
-C.NAV_POS_ALPHA  = 0.05  -- 位置修正强度（0=不修正, 1=完全信任方位角）
+C.NAV_POS_ALPHA  = 0.3   -- 导航台位置收敛速度（0.3 = 快速跟踪，纯导航台模式用大值）
 
 -- ── 飞行参数 ───────────────────────────────────────────────────
 C.MAX_TILT       = 25.0  -- max tilt angle (deg)
