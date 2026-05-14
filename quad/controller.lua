@@ -183,14 +183,11 @@ function Ctrl:hover(imu_state)
     if imu_state then
         self.target_alt = imu_state.altitude or self.target_alt
         self.target_yaw = imu_state.yaw      or self.target_yaw
-        if imu_state.x then
-            self.target_x = imu_state.x
-            self.target_z = imu_state.z
-        else
-            self.target_x = nil
-            self.target_z = nil
-        end
     end
+    -- 不自动启用位置保持；位置保持只通过 goto 命令激活
+    -- 调用 hover 时清除 goto 目标，回到纯速度阻尼模式
+    self.target_x = nil
+    self.target_z = nil
 end
 
 return Ctrl

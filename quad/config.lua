@@ -51,7 +51,7 @@ C.MOTOR_PROTOCOL = "quad_motor"  -- rednet 通信协议名
 -- ── 转速参数 ───────────────────────────────────────────────────
 C.RPM_MAX      = 256    -- 最大转速 (RPM)
 C.RPM_MIN      = 0      -- 最小转速
-C.RPM_HOVER    = 64     -- 悬停基础转速（需根据机体重量标定）
+C.RPM_HOVER    = 80     -- 悬停基础转速（需根据机体重量标定）
 C.RPM_IDLE     = 0      -- 解锁后待机转速
 
 -- ── 控制频率 ───────────────────────────────────────────────────
@@ -99,9 +99,9 @@ C.PID_ATT_YAW    = { kp=18.0, ki=0.1,  kd=1.5,  imax=30, omax=90  }
 
 -- ── 高度级联参数 ───────────────────────────────────────────────
 C.ALT_POS_GAIN   = 1.5   -- alt_err -> target_climb (m/s per block)
-C.ALT_MAX_CLIMB  = 1.0   -- max target climb rate (m/s)
-C.ALT_VEL_GAIN   = 15.0  -- climb_err -> thr_delta (RPM per m/s)
-C.ALT_MAX_DELTA  = 50    -- max throttle delta (RPM)
+C.ALT_MAX_CLIMB  = 1.5   -- max target climb rate (m/s)
+C.ALT_VEL_GAIN   = 20.0  -- climb_err -> thr_delta (RPM per m/s)
+C.ALT_MAX_DELTA  = 80    -- max throttle delta (RPM)
 C.ALT_I_GAIN     = 0.015 -- altitude integrator gain
 C.ALT_I_MAX      = 15    -- altitude integrator clamp (RPM)
 
