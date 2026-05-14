@@ -150,9 +150,10 @@ end
 function IMU:readGPS()
     local gx, gy, gz = gps.locate(2)
     if gx then
-        self.x = gx
+        -- gps 返回的 x/z 与飞控坐标系相反，对调修正
+        self.x = gz
         self.y = gy
-        self.z = gz
+        self.z = gx
     end
 end
 
