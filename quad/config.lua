@@ -42,10 +42,10 @@ C.MOTOR_TYPE = "Create_RotationSpeedController"
 -- 如果用 4 台从机电脑各自控制一个转速控制器，填写各从机的电脑ID
 -- 在从机上运行 /quad/slave，然后用 `id` 命令查看从机ID
 -- 设为 nil 表示主机直连模式（不使用从机）
-C.SLAVE_FL = nil   -- M1 左前从机电脑ID
-C.SLAVE_FR = nil   -- M2 右前从机电脑ID
-C.SLAVE_BR = nil   -- M3 右后从机电脑ID
-C.SLAVE_BL = nil   -- M4 左后从机电脑ID
+C.SLAVE_FL = 25   -- M1 左前从机电脑ID
+C.SLAVE_FR = 23   -- M2 右前从机电脑ID
+C.SLAVE_BR = 24   -- M3 右后从机电脑ID
+C.SLAVE_BL = 26   -- M4 左后从机电脑ID
 C.MOTOR_PROTOCOL = "quad_motor"  -- rednet 通信协议名
 
 -- ── 转速参数 ───────────────────────────────────────────────────
@@ -76,19 +76,19 @@ C.RATE_MAX       = 180.0 -- max target rate from attitude loop (deg/s)
 
 -- ── 内环 PID：姿态角速度（最内层，50Hz）─────────────────────────
 -- 输入：目标角速度(°/s) - 实际角速度(°/s)，输出：RPM差量
-C.PID_RATE_PITCH = { kp=1.2,  ki=0.02, kd=0.05, imax=20, omax=60 }
-C.PID_RATE_ROLL  = { kp=1.2,  ki=0.02, kd=0.05, imax=20, omax=60 }
-C.PID_RATE_YAW   = { kp=1.0,  ki=0.01, kd=0.02, imax=15, omax=40 }
+C.PID_RATE_PITCH = { kp=0.6,  ki=0.01, kd=0.02, imax=10, omax=40 }
+C.PID_RATE_ROLL  = { kp=0.6,  ki=0.01, kd=0.02, imax=10, omax=40 }
+C.PID_RATE_YAW   = { kp=0.8,  ki=0.01, kd=0.01, imax=10, omax=30 }
 
 -- ── 中环 PID：姿态角（50Hz）──────────────────────────────────────
 -- 输入：目标角度(deg) - 实际角度(deg)，输出：目标角速度(°/s)
-C.PID_ATT_PITCH  = { kp=4.5,  ki=0.0,  kd=0.0,  imax=0,  omax=180 }
-C.PID_ATT_ROLL   = { kp=4.5,  ki=0.0,  kd=0.0,  imax=0,  omax=180 }
-C.PID_ATT_YAW    = { kp=3.0,  ki=0.05, kd=0.1,  imax=30, omax=120 }
+C.PID_ATT_PITCH  = { kp=3.0,  ki=0.0,  kd=0.0,  imax=0,  omax=120 }
+C.PID_ATT_ROLL   = { kp=3.0,  ki=0.0,  kd=0.0,  imax=0,  omax=120 }
+C.PID_ATT_YAW    = { kp=2.0,  ki=0.02, kd=0.05, imax=20, omax=90  }
 
 -- ── 外环 PID：高度（10Hz）────────────────────────────────────────
 -- 输入：目标高度(blocks) - 实际高度，输出：油门增量(RPM)
-C.PID_ALT        = { kp=8.0,  ki=0.5,  kd=2.0,  imax=30, omax=80 }
+C.PID_ALT        = { kp=6.0,  ki=0.1,  kd=3.0,  imax=15, omax=60  }
 
 -- ── 外环 PID：水平位置（10Hz，需GPS）─────────────────────────────
 -- 输出：目标倾斜角(deg)
