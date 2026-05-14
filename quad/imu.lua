@@ -70,7 +70,7 @@ end
 function IMU:read(dt)
     -- ── 姿态角 ────────────────────────────────────────────
     if self.gim_p then
-        local ok, v = pcall(self.gim_p.getAngles)
+        local ok, v = pcall(function() return self.gim_p.getAngles() end)
         if ok and type(v) == "table" then
             local new_pitch = tonumber(v[1] or v.pitch) or 0
             local new_roll  = tonumber(v[2] or v.roll)  or 0
@@ -95,7 +95,7 @@ function IMU:read(dt)
 
     -- ── 高度 & 升降速 ──────────────────────────────────────
     if self.alt_p then
-        local ok, v = pcall(self.alt_p.getHeight)
+        local ok, v = pcall(function() return self.alt_p.getHeight() end)
         if ok and type(v) == "number" then
             if self._prev_alt and dt and dt > 0 then
                 local raw_climb = (v - self._prev_alt) / dt
@@ -108,14 +108,14 @@ function IMU:read(dt)
 
     -- ── 速度 ───────────────────────────────────────────────
     if self.vel_p then
-        local ok, v = pcall(self.vel_p.getVelocity)
+        local ok, v = pcall(function() return self.vel_p.getVelocity() end)
         if ok and type(v) == "number" then
             self.speed = math.abs(v)
         end
     end
 
     self._init = true
-    return self  -- return self so caller can use imu:read(dt) as state table
+    return self
 end
 
 function IMU:status()

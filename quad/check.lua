@@ -40,13 +40,34 @@ end
 if #names == 0 then print("  (none)") end
 print("")
 
--- check sensors
+-- check sensors + try reading actual values
 local sensor_types = {"gimbal_sensor","altitude_sensor","velocity_sensor","Create_RotationSpeedController"}
 print("-- Key sensors --")
 for _, t in ipairs(sensor_types) do
     local p = peripheral.find(t)
-    print((p and "[OK] " or "[--] ") .. t)
+    if p then
+        local val = ""
+        if t == "gimbal_sensor" then
+            local ok, v = pcall(function() return p.getAngles() end)
+            if ok and type(v) == "table" then
+                val = string.format(" => pitch=%.1f roll=%.1f yaw=%.1f", v[1] or 0, v[2] or 0, v[3] or 0)
+            else
+                val = " => READ FAILED: " .. tostring(v)
+            end
+        elseif t == "altitude_sensor" then
+            local ok, v = pcall(function() return p.getHeight() end)
+            if ok then val = " => height=" .. tostring(v)
+            else val = " => READ FAILED: " .. tostring(v) end
+        elseif t == "velocity_sensor" then
+            local ok, v = pcall(function() return p.getVelocity() end)
+            if ok then val = " => vel=" .. tostring(v)
+            else val = " => READ FAILED: " .. tostring(v) end
+        end
+        print("[OK] " .. t .. val)
+    else
+        print("[--] " .. t)
+    end
 end
 print("")
 print("If all files OK and Advanced=true, run:")
-print("  dofile('/quad/main.lua')")
+print("  /quad/main")
