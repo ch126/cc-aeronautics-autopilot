@@ -97,9 +97,9 @@ function Ctrl:updateOuter(imu_state, dt)
     local cy = math.cos(math.rad(imu_state.yaw or 0))
     local sy = math.sin(math.rad(imu_state.yaw or 0))
 
-    local MAX_VEL   = 2.0   -- max target velocity from position error (m/s)
-    local VEL_GAIN  = 3.0   -- deg tilt per m/s velocity error
-    local POS_GAIN  = 0.8   -- (m/s) per block of position error
+    local MAX_VEL   = 1.0   -- max target velocity from position error (m/s)
+    local VEL_GAIN  = 1.5   -- deg tilt per m/s velocity error
+    local POS_GAIN  = 0.3   -- (m/s) per block of position error
 
     local target_vx, target_vz = 0, 0
 
