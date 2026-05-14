@@ -124,28 +124,53 @@ end
 
 -- ── mix and output ────────────────────────────────────────────
 function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
-    -- attitude authority: max RPM delta for full deflection
-    local dp = pitch_out * 20   -- max ±20 RPM for pitch
-    local dr = roll_out  * 20   -- max ±20 RPM for roll
-    local dy = yaw_out   * 12   -- max ±12 RPM for yaw
+    local dp = pitch_out * 20
+    local dr = roll_out  * 20
+    local dy = yaw_out   * 12
 
-    -- negate dp/dr: sensor positive = nose-up/right-tilt,
-    -- correction needs opposite motor response
     local r1 = throttle - dp - dr - dy   -- M1 FL CCW
     local r2 = throttle - dp + dr + dy   -- M2 FR CW
     local r3 = throttle + dp + dr - dy   -- M3 BR CCW
     local r4 = throttle + dp - dr + dy   -- M4 BL CW
 
-    local max_r = math.max(r1, r2, r3, r4)
-    local min_r = math.min(r1, r2, r3, r4)
-    if max_r > C.RPM_MAX then
-        local e = max_r - C.RPM_MAX
-        r1=r1-e; r2=r2-e; r3=r3-e; r4=r4-e
+    -- ── 优先级饱和（真实FC desaturation）────────────────────
+    -- 超上限：先削减yaw，再削减pitch/roll，最后才动throttle
+    local function sat_high()
+        local over = math.max(r1,r2,r3,r4) - C.RPM_MAX
+        if over <= 0 then return end
+        -- 1. 削减yaw authority
+        local dy_cut = math.min(over/2, math.abs(dy))
+        local yaw_scale = (math.abs(dy) > 0.01) and (1 - dy_cut/math.abs(dy)) or 1
+        dy = dy * yaw_scale
+        r1 = throttle - dp - dr - dy
+        r2 = throttle - dp + dr + dy
+        r3 = throttle + dp + dr - dy
+        r4 = throttle + dp - dr + dy
+        -- 2. 仍超限则整体下移（保持姿态，牺牲throttle）
+        over = math.max(r1,r2,r3,r4) - C.RPM_MAX
+        if over > 0 then
+            r1=r1-over; r2=r2-over; r3=r3-over; r4=r4-over
+        end
     end
-    if min_r < C.RPM_MIN then
-        local e = C.RPM_MIN - min_r
-        r1=r1+e; r2=r2+e; r3=r3+e; r4=r4+e
+
+    local function sat_low()
+        local under = C.RPM_MIN - math.min(r1,r2,r3,r4)
+        if under <= 0 then return end
+        local dy_cut = math.min(under/2, math.abs(dy))
+        local yaw_scale = (math.abs(dy) > 0.01) and (1 - dy_cut/math.abs(dy)) or 1
+        dy = dy * yaw_scale
+        r1 = throttle - dp - dr - dy
+        r2 = throttle - dp + dr + dy
+        r3 = throttle + dp + dr - dy
+        r4 = throttle + dp - dr + dy
+        under = C.RPM_MIN - math.min(r1,r2,r3,r4)
+        if under > 0 then
+            r1=r1+under; r2=r2+under; r3=r3+under; r4=r4+under
+        end
     end
+
+    sat_high()
+    sat_low()
 
     applyRPMs(self, r1, r2, r3, r4)
 end

@@ -68,6 +68,8 @@ function Ctrl:updateOuter(imu_state, dt)
 
     local alt   = imu_state.altitude   or 0
     local climb = imu_state.climb_rate or 0
+    local pitch = imu_state.pitch      or 0
+    local roll  = imu_state.roll       or 0
 
     -- ── 高度级联：误差 → 目标爬升率 → 油门增量 ──────────────
     local alt_err      = self.target_alt - alt
@@ -79,9 +81,16 @@ function Ctrl:updateOuter(imu_state, dt)
     self._alt_i = self._alt_i + alt_err * C.ALT_I_GAIN * dt
     self._alt_i = clamp(self._alt_i, -C.ALT_I_MAX, C.ALT_I_MAX)
 
-    self.throttle_out = clamp(C.RPM_HOVER + thr_delta + self._alt_i, C.RPM_MIN, C.RPM_MAX)
+    -- ── 倾斜补偿（真实飞控核心）───────────────────────────────
+    -- 机体倾斜时垂直推力 = throttle * cos(pitch) * cos(roll)
+    -- 补偿：将油门除以倾斜因子，维持恒定升力
+    local cp = math.cos(math.rad(pitch))
+    local cr = math.cos(math.rad(roll))
+    local tilt_factor = math.max(cp * cr, 0.5)  -- 防止极端倾角时爆炸
+    local base_thr = clamp(C.RPM_HOVER + thr_delta + self._alt_i, C.RPM_MIN, C.RPM_MAX)
+    self.throttle_out = clamp(base_thr / tilt_factor, C.RPM_MIN, C.RPM_MAX)
 
-    -- ── 水平位置级联：GPS误差 → 目标速度 → 倾斜角 ───────────
+    -- ── 水平速度阻尼 ──────────────────────────────────────────
     local vx = imu_state.vx or 0
     local vz = imu_state.vz or 0
     local cy = math.cos(math.rad(imu_state.yaw or 0))
@@ -93,21 +102,26 @@ function Ctrl:updateOuter(imu_state, dt)
         local ex = self.target_x - imu_state.x
         local ez = self.target_z - imu_state.z
         local dist = math.sqrt(ex*ex + ez*ez)
-        -- GPS 死区：噪声范围内不修正，防止抖振
         if dist > C.POS_DEADBAND then
             target_vx = clamp(ex * C.POS_GAIN, -C.POS_MAX_VEL, C.POS_MAX_VEL)
             target_vz = clamp(ez * C.POS_GAIN, -C.POS_MAX_VEL, C.POS_MAX_VEL)
         end
     end
 
-    -- 速度误差（世界系）→ 机体系 → 倾斜角
+    -- 速度误差（世界系）→ 机体系 → 期望倾斜角
     local dvx   = target_vx - vx
     local dvz   = target_vz - vz
     local dvx_b =  cy * dvx + sy * dvz
     local dvz_b = -sy * dvx + cy * dvz
 
-    self.target_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-    self.target_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+    local raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+    local raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+
+    -- ── 设定值平滑（一阶低通，防止阶跃输入）─────────────────
+    -- 类似真实FC的 tpa / setpoint smoothing
+    local SP_ALPHA = C.SP_SMOOTH or 0.3  -- 0=完全平滑, 1=无平滑
+    self.target_pitch = self.target_pitch + SP_ALPHA * (raw_pitch - self.target_pitch)
+    self.target_roll  = self.target_roll  + SP_ALPHA * (raw_roll  - self.target_roll)
 end
 
 -- inner loop: attitude + rate  (call at CTRL_HZ ~50Hz)

@@ -16,7 +16,7 @@ function PID.new(cfg)
         integral_max = cfg.integral_max or math.huge,
         output_max   = cfg.output_max   or math.huge,
         _integral    = 0.0,
-        _last_error  = 0.0,
+        _last_meas   = 0.0,   -- D项对测量值求导，避免setpoint突变时derivative kick
         _initialized = false,
     }, PID)
 end
@@ -24,7 +24,7 @@ end
   -- -
 function PID:reset()
     self._integral    = 0.0
-    self._last_error  = 0.0
+    self._last_meas   = 0.0
     self._initialized = false
 end
 
@@ -38,24 +38,22 @@ function PID:compute(setpoint, measured, dt)
 
     local error = setpoint - measured
 
-
+    -- 积分（带anti-windup钳位）
     self._integral = self._integral + error * dt
-
     self._integral = math.max(-self.integral_max,
                      math.min( self.integral_max, self._integral))
 
-
+    -- D项对测量值求导（非误差），避免setpoint突变产生derivative kick
     local derivative = 0.0
     if self._initialized then
-        derivative = (error - self._last_error) / dt
+        derivative = -(measured - self._last_meas) / dt
     end
     self._initialized = true
-    self._last_error  = error
+    self._last_meas   = measured
 
     local output = self.kp * error
                  + self.ki * self._integral
                  + self.kd * derivative
-
 
     output = math.max(-self.output_max, math.min(self.output_max, output))
     return output
