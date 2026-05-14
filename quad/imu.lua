@@ -26,9 +26,21 @@ IMU.__index = IMU
 function IMU.new()
     local self = setmetatable({}, IMU)
 
-    self.gim_p = findP(C.SENSOR_GIMBAL,   "gimbal_sensor")
-    self.alt_p = findP(C.SENSOR_ALTITUDE,  "altitude_sensor")
-    self.vel_p = findP(C.SENSOR_VELOCITY,  "velocity_sensor")
+    self.gim_p   = findP(C.SENSOR_GIMBAL,   "gimbal_sensor")
+    self.alt_p   = findP(C.SENSOR_ALTITUDE,  "altitude_sensor")
+    -- 两个速度传感器，分别朝 X 和 Z 轴
+    local all_vel = {}
+    peripheral.find("velocity_sensor", function(name, p) all_vel[#all_vel+1] = {name=name, p=p} end)
+    if C.SENSOR_VEL_X then
+        self.vel_x_p = peripheral.wrap(C.SENSOR_VEL_X)
+    else
+        self.vel_x_p = all_vel[1] and all_vel[1].p or nil
+    end
+    if C.SENSOR_VEL_Z then
+        self.vel_z_p = peripheral.wrap(C.SENSOR_VEL_Z)
+    else
+        self.vel_z_p = all_vel[2] and all_vel[2].p or nil
+    end
 
     -- ── 姿态角 (deg) ────────────────────────────────────────
     self.pitch = 0.0
@@ -109,19 +121,21 @@ function IMU:read(dt)
     end
 
     -- ── 速度向量 ──────────────────────────────────────────
-    if self.vel_p then
-        local ok, v = pcall(function() return self.vel_p.getVelocity() end)
-        if ok then
-            if type(v) == "table" then
-                -- returns {x,y,z} world velocity
-                self.vx    = tonumber(v.x or v[1]) or 0
-                self.vz    = tonumber(v.z or v[3]) or 0
-                self.speed = math.sqrt(self.vx^2 + self.vz^2)
-            elseif type(v) == "number" then
-                self.speed = math.abs(v)
-            end
+    -- vel_x_p：朝 X 轴安装，getVelocity() 返回 X 方向速度 (m/s)
+    -- vel_z_p：朝 Z 轴安装，getVelocity() 返回 Z 方向速度 (m/s)
+    if self.vel_x_p then
+        local ok, v = pcall(function() return self.vel_x_p.getVelocity() end)
+        if ok and type(v) == "number" then
+            self.vx = v
         end
     end
+    if self.vel_z_p then
+        local ok, v = pcall(function() return self.vel_z_p.getVelocity() end)
+        if ok and type(v) == "number" then
+            self.vz = v
+        end
+    end
+    self.speed = math.sqrt(self.vx^2 + self.vz^2)
 
     self._init = true
     return self
@@ -129,8 +143,8 @@ end
 
 function IMU:status()
     local function yn(p) return p and "OK" or "--" end
-    return string.format("gim:%s alt:%s vel:%s",
-        yn(self.gim_p), yn(self.alt_p), yn(self.vel_p))
+    return string.format("gim:%s alt:%s vx:%s vz:%s",
+        yn(self.gim_p), yn(self.alt_p), yn(self.vel_x_p), yn(self.vel_z_p))
 end
 
 return IMU

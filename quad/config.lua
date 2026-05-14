@@ -63,7 +63,9 @@ C.NAV_DT       = 1 / 10 -- 外环 dt
 -- ── 传感器外设名称（nil=自动扫描）─────────────────────────────
 C.SENSOR_GIMBAL   = nil  -- gimbal_sensor  -> getAngles() {pitch,roll,yaw}
 C.SENSOR_ALTITUDE = nil  -- altitude_sensor -> getHeight()
-C.SENSOR_VELOCITY = nil  -- velocity_sensor -> getVelocity()
+-- 两个速度传感器：一个朝 X 轴，一个朝 Z 轴（nil=自动找第一个）
+C.SENSOR_VEL_X    = nil  -- velocity_sensor 朝 X 轴 -> getVelocity() 返回标量 m/s
+C.SENSOR_VEL_Z    = nil  -- velocity_sensor 朝 Z 轴 -> getVelocity() 返回标量 m/s
 
 -- ── 飞行参数 ───────────────────────────────────────────────────
 C.MAX_TILT       = 25.0  -- max tilt angle (deg)
