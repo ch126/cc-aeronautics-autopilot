@@ -56,11 +56,13 @@ C.SENSOR_ALTITUDE = nil  -- altitude_sensor -> getHeight()
 C.SENSOR_VELOCITY = nil  -- velocity_sensor -> getVelocity()
 
 -- ── 飞行参数 ───────────────────────────────────────────────────
-C.MAX_TILT       = 25.0  -- 最大倾斜角 (deg)，超过则限幅
-C.MAX_CLIMB      = 4.0   -- 最大爬升速度 (m/s)
-C.MAX_SPEED      = 6.0   -- 最大水平速度 (m/s)
-C.ARRIVAL_RADIUS = 2.0   -- 到达判定半径 (blocks)
-C.ALT_THRESHOLD  = 0.5   -- 高度误差死区 (blocks)
+C.MAX_TILT       = 25.0  -- max tilt angle (deg)
+C.MAX_CLIMB      = 4.0   -- max climb rate (m/s)
+C.MAX_SPEED      = 6.0   -- max horizontal speed (m/s)
+C.ARRIVAL_RADIUS = 2.0   -- arrival radius (blocks)
+C.ALT_THRESHOLD  = 0.5   -- altitude deadband (blocks)
+C.ATT_MAX        = 25.0  -- max target pitch/roll from position loop (deg)
+C.RATE_MAX       = 180.0 -- max target rate from attitude loop (deg/s)
 
 -- ── 内环 PID：姿态角速度（最内层，50Hz）─────────────────────────
 -- 输入：目标角速度(°/s) - 实际角速度(°/s)，输出：RPM差量
