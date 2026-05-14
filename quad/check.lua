@@ -45,15 +45,7 @@ local sensor_types = {"gimbal_sensor","altitude_sensor","velocity_sensor","Creat
 print("-- Key sensors --")
 for _, t in ipairs(sensor_types) do
     local p = peripheral.find(t)
-    local extra = ""
-    if p and t == "Create_RotationSpeedController" then
-        if type(p.setTargetSpeed) == "function" then
-            extra = " [setTargetSpeed OK]"
-        else
-            extra = " [WARN: no setTargetSpeed!]"
-        end
-    end
-    print((p and "[OK] " or "[--] ") .. t .. extra)
+    print((p and "[OK] " or "[--] ") .. t)
 end
 print("")
 print("If all files OK and Advanced=true, run:")
