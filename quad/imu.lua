@@ -64,9 +64,9 @@ function IMU.new()
     self.speed = 0.0   -- 标量
 
     -- ── GPS 位置 ──────────────────────────────────────────
-    self.x     = nil   -- 世界 X 坐标
-    self.y     = nil   -- 世界 Y 坐标
-    self.z     = nil   -- 世界 Z 坐标
+    self.x     = 0.0   -- 相对起飞点 X（航位推算）
+    self.y     = nil   -- 世界 Y 坐标（暂不使用）
+    self.z     = 0.0   -- 相对起飞点 Z（航位推算）
 
     -- ── 内部 ─────────────────────────────────────────────
     self._prev = {pitch=0, roll=0, yaw=0}
@@ -142,6 +142,12 @@ function IMU:read(dt)
         end
     end
     self.speed = math.sqrt(self.vx^2 + self.vz^2)
+
+    -- ── 航位推算：速度积分得相对位置 ──────────────────────
+    if self._init and dt and dt > 0 then
+        self.x = self.x + self.vx * dt
+        self.z = self.z + self.vz * dt
+    end
 
     -- ── 导航台 Yaw 修正（互补滤波）────────────────────────────
     -- 原理：nav_table 指向地面固定磁铁，relativeAngle = 磁铁相对飞机朝向

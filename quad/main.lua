@@ -144,6 +144,8 @@ local function handle_cmd(line)
         gui:log("arm disarm hover goto alt yaw land pos motors quit", "INFO")
     elseif cmd == "arm" then
         local h = tonumber(parts[2]) or 5
+        imu.x = 0.0   -- 重置航位推算原点
+        imu.z = 0.0
         ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
         ctrl.target_alt = h
         gui:log(string.format("Armed, target alt %.1f m", h), "OK")
@@ -154,7 +156,18 @@ local function handle_cmd(line)
         ctrl:hover(imu_state)
         gui:log(string.format("Hovering, alt %.1f", imu_state.altitude or 0), "OK")
     elseif cmd == "goto" then
-        gui:log("GPS disabled", "WARN")
+        -- goto x z [alt]  —— 坐标相对起飞点（航位推算）
+        local x   = tonumber(parts[2])
+        local z   = tonumber(parts[3])
+        local alt = tonumber(parts[4]) or ctrl.target_alt
+        if x and z then
+            ctrl.target_x   = x
+            ctrl.target_z   = z
+            ctrl.target_alt = alt
+            gui:log(string.format("Goto (%.1f, %.1f) alt %.1f", x, z, alt), "OK")
+        else
+            gui:log("Usage: goto <x> <z> [alt]", "WARN")
+        end
     elseif cmd == "alt" then
         local h = tonumber(parts[2])
         if h then ctrl.target_alt = h
@@ -197,6 +210,8 @@ local function handle_button(action)
         })
         if res then
             local h = tonumber(res[1]) or 5
+            imu.x = 0.0   -- 重置航位推算原点
+            imu.z = 0.0
             ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
             ctrl.target_alt = h
             gui:log(string.format("Armed, target alt %.1f m", h), "OK")
