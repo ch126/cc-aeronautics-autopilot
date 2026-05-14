@@ -89,7 +89,9 @@ end
 
 -- ctrl loop 20Hz：内环 + 外环合并，减少调度延迟
 local function ctrlLoop()
-    local last_t  = os.clock()
+    local last_t    = os.clock()
+    local outer_acc = 0   -- 外环累计时间
+    local OUTER_DT  = 0.25  -- 外环 4Hz
     while running do
         local now = os.clock()
         local dt  = math.max(0.001, math.min(now - last_t, 0.2))
@@ -97,10 +99,15 @@ local function ctrlLoop()
         imu:read(dt)
         imu_state = imu
         if ctrl.armed then
-            ctrl:updateOuter(imu_state, dt)
+            outer_acc = outer_acc + dt
+            if outer_acc >= OUTER_DT then
+                ctrl:updateOuter(imu_state, outer_acc)
+                outer_acc = 0
+            end
             local po, ro, yo = ctrl:updateInner(imu_state, dt)
             mixer:mix(ctrl.throttle_out or C.RPM_HOVER, po, ro, yo)
         else
+            outer_acc = 0
             mixer:allStop()
         end
         local sleep_t = ctrl_dt - (os.clock() - now)
