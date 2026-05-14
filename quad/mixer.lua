@@ -2,8 +2,16 @@
 --  quad/mixer.lua
 --  X-type quadrotor mixing matrix + speed controller output
 --
---  Motor layout (top view):
+--  Supports two modes:
+--    1. SLAVE MODE  (C.SLAVE_FL/FR/BR/BL set in config.lua)
+--       Master sends RPM via rednet to 4 slave computers.
+--       Each slave runs /quad/slave and controls one motor.
 --
+--    2. DIRECT MODE (slaves = nil, default)
+--       Master directly wraps Create_RotationSpeedController
+--       peripherals via wired modem.
+--
+--  Motor layout (top view):
 --         FRONT
 --    M1(CCW)   M2(CW)
 --      \         /
@@ -11,14 +19,6 @@
 --      /         \
 --    M4(CW)    M3(CCW)
 --         REAR
---
---  Mixing:
---    M1 = throttle + pitch + roll - yaw   (FL, CCW)
---    M2 = throttle + pitch - roll + yaw   (FR, CW)
---    M3 = throttle - pitch - roll - yaw   (BR, CCW)
---    M4 = throttle - pitch + roll + yaw   (BL, CW)
---
---  Create speed controller: setTargetSpeed(rpm)
 -- =============================================================
 
 local C = dofile("/quad/config.lua")
@@ -26,12 +26,15 @@ local C = dofile("/quad/config.lua")
 local Mixer = {}
 Mixer.__index = Mixer
 
--- find speed controllers, assign FL/FR/BR/BL in order
+-- ── detect mode ───────────────────────────────────────────────
+local slave_ids  = { C.SLAVE_FL, C.SLAVE_FR, C.SLAVE_BR, C.SLAVE_BL }
+local use_slaves = C.SLAVE_FL or C.SLAVE_FR or C.SLAVE_BR or C.SLAVE_BL
+
+-- ── direct mode: find local peripherals ──────────────────────
 local function findMotors()
     local motors = {}
-    local names = { C.MOTOR_FL, C.MOTOR_FR, C.MOTOR_BR, C.MOTOR_BL }
+    local names  = { C.MOTOR_FL, C.MOTOR_FR, C.MOTOR_BR, C.MOTOR_BL }
     local labels = { "FL", "FR", "BR", "BL" }
-
     local found_all = true
     for i, name in ipairs(names) do
         if name then
@@ -39,15 +42,13 @@ local function findMotors()
             if p then
                 motors[i] = { p=p, name=name, label=labels[i] }
             else
-                print("WARN: motor " .. labels[i] .. " '" .. name .. "' not found")
+                print("WARN: motor " .. labels[i] .. " not found: " .. name)
                 found_all = false
             end
         else
             found_all = false
         end
     end
-
-    -- auto-scan missing motors
     if not found_all then
         local auto_list = { peripheral.find(C.MOTOR_TYPE) }
         local auto_idx  = 1
@@ -60,8 +61,6 @@ local function findMotors()
                         label = labels[i]
                     }
                     auto_idx = auto_idx + 1
-                else
-                    motors[i] = nil
                 end
             end
         end
@@ -69,21 +68,61 @@ local function findMotors()
     return motors
 end
 
+-- ── slave mode: open rednet ───────────────────────────────────
+local rednet_opened = false
+local function ensureRednet()
+    if rednet_opened then return end
+    peripheral.find("modem", rednet.open)
+    rednet_opened = true
+end
+
+-- ── constructor ───────────────────────────────────────────────
 function Mixer.new()
     local self = setmetatable({}, Mixer)
-    self.motors = findMotors()
+    if use_slaves then
+        ensureRednet()
+        self.motors = nil
+        print("Mixer: slave mode  FL=" .. tostring(C.SLAVE_FL)
+            .. " FR=" .. tostring(C.SLAVE_FR)
+            .. " BR=" .. tostring(C.SLAVE_BR)
+            .. " BL=" .. tostring(C.SLAVE_BL))
+    else
+        self.motors = findMotors()
+        local cnt = 0
+        for i = 1, 4 do if self.motors[i] then cnt = cnt + 1 end end
+        print("Mixer: direct mode  " .. cnt .. "/4 motors found")
+    end
     self.rpm = {0, 0, 0, 0}
     return self
 end
 
-local function setMotorRPM(motor, rpm)
-    if not motor then return end
-    rpm = math.max(C.RPM_MIN, math.min(C.RPM_MAX, rpm))
-    motor.p.setTargetSpeed(math.floor(rpm + 0.5))
+-- ── internal: apply 4 RPM values ─────────────────────────────
+local function applyRPMs(self, r1, r2, r3, r4)
+    self.rpm = {r1, r2, r3, r4}
+    if use_slaves then
+        -- send to each slave computer
+        local rpms = {r1, r2, r3, r4}
+        for i = 1, 4 do
+            if slave_ids[i] then
+                rednet.send(slave_ids[i],
+                    { idx = i, rpm = math.floor(rpms[i] + 0.5) },
+                    C.MOTOR_PROTOCOL)
+            end
+        end
+    else
+        local function set(motor, rpm)
+            if not motor then return end
+            rpm = math.max(C.RPM_MIN, math.min(C.RPM_MAX, rpm))
+            motor.p.setTargetSpeed(math.floor(rpm + 0.5))
+        end
+        set(self.motors[1], r1)
+        set(self.motors[2], r2)
+        set(self.motors[3], r3)
+        set(self.motors[4], r4)
+    end
 end
 
--- throttle: 0..RPM_MAX  (hover ~RPM_HOVER)
--- pitch_out, roll_out, yaw_out: -1..1
+-- ── mix and output ────────────────────────────────────────────
 function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
     local half_range = (C.RPM_MAX - C.RPM_MIN) * 0.5
     local dp = pitch_out * half_range * 0.5
@@ -95,7 +134,6 @@ function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
     local r3 = throttle - dp - dr - dy   -- M3 BR CCW
     local r4 = throttle - dp + dr + dy   -- M4 BL CW
 
-    -- anti-windup: shift all if any saturate
     local max_r = math.max(r1, r2, r3, r4)
     local min_r = math.min(r1, r2, r3, r4)
     if max_r > C.RPM_MAX then
@@ -107,25 +145,23 @@ function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
         r1=r1+e; r2=r2+e; r3=r3+e; r4=r4+e
     end
 
-    self.rpm = {r1, r2, r3, r4}
-    setMotorRPM(self.motors[1], r1)
-    setMotorRPM(self.motors[2], r2)
-    setMotorRPM(self.motors[3], r3)
-    setMotorRPM(self.motors[4], r4)
+    applyRPMs(self, r1, r2, r3, r4)
 end
 
 function Mixer:allStop()
-    for i = 1, 4 do
-        setMotorRPM(self.motors[i], 0)
-        self.rpm[i] = 0
-    end
+    applyRPMs(self, 0, 0, 0, 0)
 end
 
 function Mixer:status()
     local s = ""
     local labels = {"FL","FR","BR","BL"}
     for i = 1, 4 do
-        local ok = self.motors[i] and "OK" or "--"
+        local ok
+        if use_slaves then
+            ok = slave_ids[i] and ("S"..tostring(slave_ids[i])) or "--"
+        else
+            ok = (self.motors and self.motors[i]) and "OK" or "--"
+        end
         s = s .. string.format("%s:%s(%3d) ", labels[i], ok, self.rpm[i])
     end
     return s

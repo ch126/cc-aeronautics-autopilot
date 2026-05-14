@@ -15,6 +15,8 @@ local FILES = {
     "quad/gui.lua",
     "quad/main.lua",
     "quad/check.lua",
+    "quad/slave.lua",
+    "quad/motor_test.lua",
 }
 
 local function mkdir(p)

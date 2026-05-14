@@ -38,6 +38,16 @@ C.MOTOR_BL = nil   -- M4 左后  (顺时针)
 -- 转速控制器外设类型名（根据实际 mod 填写）
 C.MOTOR_TYPE = "Create_RotationSpeedController"
 
+-- ── 分布式从机设置 ─────────────────────────────────────────────
+-- 如果用 4 台从机电脑各自控制一个转速控制器，填写各从机的电脑ID
+-- 在从机上运行 /quad/slave，然后用 `id` 命令查看从机ID
+-- 设为 nil 表示主机直连模式（不使用从机）
+C.SLAVE_FL = nil   -- M1 左前从机电脑ID
+C.SLAVE_FR = nil   -- M2 右前从机电脑ID
+C.SLAVE_BR = nil   -- M3 右后从机电脑ID
+C.SLAVE_BL = nil   -- M4 左后从机电脑ID
+C.MOTOR_PROTOCOL = "quad_motor"  -- rednet 通信协议名
+
 -- ── 转速参数 ───────────────────────────────────────────────────
 C.RPM_MAX      = 256    -- 最大转速 (RPM)，不超过转速控制器上限
 C.RPM_MIN      = 0      -- 最小转速（悬停需要一定转速，可设基础值）
