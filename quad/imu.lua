@@ -171,20 +171,46 @@ function IMU:read(dt)
         self.z = self.z + self.vz * dt
     end
 
-    -- ── 导航台 Yaw 修正（互补滤波）────────────────────────────
-    -- 原理：nav_table 指向地面固定磁铁，relativeAngle = 磁铁相对飞机朝向
-    -- 飞机绝对朝向 = NAV_BEACON_BEARING - relativeAngle
+    -- ── 导航台 Yaw + 位置修正（互补滤波）─────────────────────
     if self.nav_p and C.NAV_BEACON_BEARING then
         local ok, rel = pcall(function() return self.nav_p.getRelativeAngle() end)
         if ok and type(rel) == "number" then
-            -- 计算导航台给出的绝对 yaw
+            -- ① Yaw 修正：绝对朝向 = 信标方位角 - 相对角
             local nav_yaw = (C.NAV_BEACON_BEARING - rel) % 360
-            -- 互补滤波：gimbal 快速响应 + 导航台慢速修正漂移
             local alpha = C.NAV_YAW_ALPHA or 0.98
-            -- 找最短角度差方向融合（处理360/0边界）
             local diff = (nav_yaw - self.yaw) % 360
             if diff > 180 then diff = diff - 360 end
             self.yaw = (self.yaw + (1.0 - alpha) * diff) % 360
+
+            -- ② 位置修正：利用方位角 + 已知信标坐标，修正DR漂移
+            -- 飞机到信标的绝对方位角（世界系，北=0°）
+            if C.NAV_BEACON_X and C.NAV_BEACON_Z then
+                local abs_bearing_rad = math.rad(nav_yaw)
+                -- 从当前DR位置出发，计算预期方位角
+                local dbx = C.NAV_BEACON_X - self.x
+                local dbz = C.NAV_BEACON_Z - self.z
+                local dist = math.sqrt(dbx*dbx + dbz*dbz)
+                if dist > 0.5 then
+                    -- 预期方位角（DR计算）
+                    local expected_bearing_rad = math.atan(dbx, dbz)  -- atan2(X,Z) = 北偏东
+                    -- 实际方位角（导航台测量）
+                    local measured_bearing_rad = abs_bearing_rad
+                    -- 方位角差 → 垂直于视线方向的位置误差
+                    local bearing_err = measured_bearing_rad - expected_bearing_rad
+                    -- 归一化到 -π..π
+                    while bearing_err >  math.pi do bearing_err = bearing_err - 2*math.pi end
+                    while bearing_err < -math.pi do bearing_err = bearing_err + 2*math.pi end
+                    -- 把方位角误差转换成横向位置修正
+                    -- 横向偏移 ≈ dist * sin(bearing_err)
+                    local lateral_err = dist * math.sin(bearing_err)
+                    -- 横向方向（垂直于信标方向，世界系）
+                    local perp_x =  math.cos(expected_bearing_rad)
+                    local perp_z = -math.sin(expected_bearing_rad)
+                    local pa = C.NAV_POS_ALPHA or 0.05
+                    self.x = self.x + pa * lateral_err * perp_x
+                    self.z = self.z + pa * lateral_err * perp_z
+                end
+            end
         end
     end
 

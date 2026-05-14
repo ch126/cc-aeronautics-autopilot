@@ -76,6 +76,13 @@ C.NAV_BEACON_BEARING = nil   -- 例如：0 = 磁铁在正北方
 -- 互补滤波系数：gimbal占比（越大=越信gimbal，越小=越信导航台）
 C.NAV_YAW_ALPHA      = 0.98  -- 0.98 = 慢速漂移修正，快速旋转靠gimbal
 
+-- 导航台位置修正：信标相对起飞点的坐标（blocks，北=+X，东=+Z）
+-- 填写后，导航台方位角会修正航位推算的位置误差
+-- 设为 nil 则只用方位角修正 yaw，不修正位置
+C.NAV_BEACON_X   = nil   -- 信标相对起飞点的 X 坐标 (blocks)
+C.NAV_BEACON_Z   = nil   -- 信标相对起飞点的 Z 坐标 (blocks)
+C.NAV_POS_ALPHA  = 0.05  -- 位置修正强度（0=不修正, 1=完全信任方位角）
+
 -- ── 飞行参数 ───────────────────────────────────────────────────
 C.MAX_TILT       = 25.0  -- max tilt angle (deg)
 C.MAX_CLIMB      = 4.0   -- max climb rate (m/s)
