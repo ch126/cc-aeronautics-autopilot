@@ -29,6 +29,7 @@ function IMU.new()
     self.gim_p   = findP(C.SENSOR_GIMBAL,   "gimbal_sensor")
     self.alt_p   = findP(C.SENSOR_ALTITUDE,  "altitude_sensor")
     self.nav_p   = findP(C.SENSOR_NAV,       "navigation_table")
+    self.gps_p   = findP(C.SENSOR_GPS,       "gps_sensor")
     -- 两个速度传感器，分别朝 X 和 Z 轴
     local all_vel = {}
     peripheral.find("velocity_sensor", function(name, p) all_vel[#all_vel+1] = {name=name, p=p} end)
@@ -66,9 +67,12 @@ function IMU.new()
     self._vz_bias = 0.0
 
     -- ── GPS 位置 ──────────────────────────────────────────
-    self.x     = 0.0   -- 相对起飞点 X（航位推算）
-    self.y     = nil   -- 世界 Y 坐标（暂不使用）
-    self.z     = 0.0   -- 相对起飞点 Z（航位推算）
+    self.x     = 0.0   -- 相对起飞点 X
+    self.y     = nil
+    self.z     = 0.0   -- 相对起飞点 Z
+    self.gps_ok     = false
+    self._origin_x  = nil   -- arm时记录的起飞点世界坐标
+    self._origin_z  = nil
 
     -- ── 内部 ─────────────────────────────────────────────
     self._prev = {pitch=0, roll=0, yaw=0}
@@ -165,8 +169,29 @@ function IMU:read(dt)
         end
     end
 
-    -- ── 航位推算：速度积分得相对位置（有速度传感器时才有效）──
-    if self._init and dt and dt > 0 then
+    -- ── GPS：直接更新相对起飞点坐标（优先级最高）────────────
+    if self.gps_p then
+        local ok, pos = pcall(function() return self.gps_p.getPosition() end)
+        if ok and type(pos) == "table" then
+            local wx = tonumber(pos.x or pos[1])
+            local wz = tonumber(pos.z or pos[3])
+            if wx and wz then
+                -- arm时设定原点
+                if self._origin_x == nil then
+                    self._origin_x = wx
+                    self._origin_z = wz
+                end
+                self.x      = wx - self._origin_x
+                self.z      = wz - self._origin_z
+                self.gps_ok = true
+            end
+        else
+            self.gps_ok = false
+        end
+    end
+
+    -- ── 航位推算：速度积分（无 GPS 时才积分，避免冲突）─────
+    if not self.gps_ok and self._init and dt and dt > 0 then
         self.x = self.x + self.vx * dt
         self.z = self.z + self.vz * dt
     end
@@ -256,8 +281,9 @@ end
 
 function IMU:status()
     local function yn(p) return p and "OK" or "--" end
-    return string.format("gim:%s alt:%s vx:%s vz:%s nav:%s",
-        yn(self.gim_p), yn(self.alt_p), yn(self.vel_x_p), yn(self.vel_z_p), yn(self.nav_p))
+    return string.format("gim:%s alt:%s vx:%s vz:%s nav:%s gps:%s",
+        yn(self.gim_p), yn(self.alt_p), yn(self.vel_x_p), yn(self.vel_z_p),
+        yn(self.nav_p), self.gps_ok and "OK" or (self.gps_p and "ERR" or "--"))
 end
 
 return IMU

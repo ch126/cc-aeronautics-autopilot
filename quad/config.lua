@@ -67,6 +67,7 @@ C.SENSOR_ALTITUDE = nil  -- altitude_sensor -> getHeight()
 C.SENSOR_VEL_X    = nil  -- velocity_sensor 朝 X 轴 -> getVelocity() 返回标量 m/s
 C.SENSOR_VEL_Z    = nil  -- velocity_sensor 朝 Z 轴 -> getVelocity() 返回标量 m/s
 C.SENSOR_NAV      = nil  -- navigation_table -> getRelativeAngle() 导航台修正yaw
+C.SENSOR_GPS      = nil  -- gps_sensor -> getPosition() 返回 {x,y,z} 世界坐标（优先级最高）
 
 -- ── 导航台 Heading 修正 ────────────────────────────────────────
 -- 将罗盘/磁铁放在地面，飞机上装导航台

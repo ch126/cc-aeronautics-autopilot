@@ -149,6 +149,9 @@ local function handle_cmd(line)
         gui:log(string.format("Bias vx=%.3f vz=%.3f", bx, bz), "INFO")
         imu.x = 0.0
         imu.z = 0.0
+        imu._origin_x = nil   -- 重置 GPS 起飞原点（下一帧自动设定）
+        imu._origin_z = nil
+        imu.gps_ok    = false
         ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
         ctrl.target_alt = h
         -- 导航台在线时自动启用位置保持（以起飞点为原点目标）
@@ -204,10 +207,11 @@ local function handle_cmd(line)
         gui:log(string.format("P%.1f R%.1f Y%.1f Alt%.2f Clmb%.2f",
             s.pitch or 0, s.roll or 0, s.yaw or 0,
             s.altitude or 0, s.climb_rate or 0), "INFO")
-        gui:log(string.format("x=%.2f z=%.2f vx=%.3f vz=%.3f tx=%s tz=%s nav_lat=%.2f",
+        gui:log(string.format("x=%.2f z=%.2f vx=%.3f vz=%.3f tx=%s tz=%s gps=%s nav_lat=%.2f",
             s.x or 0, s.z or 0, s.vx or 0, s.vz or 0,
             ctrl.target_x and string.format("%.2f", ctrl.target_x) or "nil",
             ctrl.target_z and string.format("%.2f", ctrl.target_z) or "nil",
+            imu.gps_ok and "OK" or "--",
             imu.nav_lateral or 0), "INFO")
         if ctrl.dbg then
             local d = ctrl.dbg
