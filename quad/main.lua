@@ -216,8 +216,24 @@ local function handle_cmd(line)
         end
     elseif cmd == "motors" then
         local r = mixer.rpm or {0,0,0,0}
-        gui:log(string.format("FL%d FR%d BR%d BL%d",
+        local rf = mixer.rpm_filt or {0,0,0,0}
+        gui:log(string.format("tgt FL%d FR%d BR%d BL%d",
             r[1] or 0, r[2] or 0, r[3] or 0, r[4] or 0), "INFO")
+        gui:log(string.format("filt FL%d FR%d BR%d BL%d",
+            math.floor(rf[1] or 0), math.floor(rf[2] or 0),
+            math.floor(rf[3] or 0), math.floor(rf[4] or 0)), "INFO")
+    elseif cmd == "tilt" then
+        -- tilt <pitch> <roll>：直接注入目标倾斜角（度），测试混控链路
+        -- 例：tilt 5 0 → 应前倾，FL/BL转速提高，FR/BR降低
+        local p = tonumber(parts[2]) or 5
+        local r = tonumber(parts[3]) or 0
+        if ctrl.armed then
+            ctrl.target_pitch = p
+            ctrl.target_roll  = r
+            gui:log(string.format("Injected pitch=%.1f roll=%.1f  watch motors cmd", p, r), "WARN")
+        else
+            gui:log("Arm first", "WARN")
+        end
     elseif cmd == "land" then
         gui:log("Landing...", "WARN")
         ctrl.target_alt = 0.3
