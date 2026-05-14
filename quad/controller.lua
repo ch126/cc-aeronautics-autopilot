@@ -90,24 +90,38 @@ function Ctrl:updateOuter(imu_state, dt)
 
     self.throttle_out = clamp(C.RPM_HOVER + thr_delta + self._alt_i, C.RPM_MIN, C.RPM_MAX)
 
-    -- position loop: velocity damping to resist horizontal drift
-    -- rotate world velocity into body frame, then tilt against it
+    -- position loop: GPS position hold (cascade: pos_err -> target_vel -> tilt)
+    -- Falls back to pure velocity damping if no GPS fix
     local vx = imu_state.vx or 0
     local vz = imu_state.vz or 0
-    if math.abs(vx) > 0.05 or math.abs(vz) > 0.05 then
-        local cy = math.cos(math.rad(imu_state.yaw or 0))
-        local sy = math.sin(math.rad(imu_state.yaw or 0))
-        -- world -> body frame
-        local vx_b =  cy * vx + sy * vz
-        local vz_b = -sy * vx + cy * vz
-        -- tilt against velocity to brake, limit to ATT_MAX
-        local VEL_GAIN = 3.0  -- deg per m/s
-        self.target_pitch = clamp(-vx_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-        self.target_roll  = clamp(-vz_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-    else
-        self.target_pitch = 0
-        self.target_roll  = 0
+    local cy = math.cos(math.rad(imu_state.yaw or 0))
+    local sy = math.sin(math.rad(imu_state.yaw or 0))
+
+    local MAX_VEL   = 2.0   -- max target velocity from position error (m/s)
+    local VEL_GAIN  = 3.0   -- deg tilt per m/s velocity error
+    local POS_GAIN  = 0.8   -- (m/s) per block of position error
+
+    local target_vx, target_vz = 0, 0
+
+    if self.target_x and imu_state.x then
+        -- position error -> target world velocity
+        local ex = self.target_x - imu_state.x
+        local ez = self.target_z - imu_state.z
+        target_vx = clamp(ex * POS_GAIN, -MAX_VEL, MAX_VEL)
+        target_vz = clamp(ez * POS_GAIN, -MAX_VEL, MAX_VEL)
     end
+
+    -- velocity error in world frame
+    local dvx = target_vx - vx
+    local dvz = target_vz - vz
+
+    -- rotate to body frame
+    local dvx_b =  cy * dvx + sy * dvz
+    local dvz_b = -sy * dvx + cy * dvz
+
+    -- tilt to correct velocity error
+    self.target_pitch = clamp(-dvx_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+    self.target_roll  = clamp(-dvz_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
 end
 
 -- inner loop: attitude + rate  (call at CTRL_HZ ~50Hz)

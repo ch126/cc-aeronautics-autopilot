@@ -62,6 +62,11 @@ function IMU.new()
     self.vz    = 0.0   -- East+
     self.speed = 0.0   -- 标量
 
+    -- ── GPS 位置 ──────────────────────────────────────────
+    self.x     = nil   -- 世界 X 坐标
+    self.y     = nil   -- 世界 Y 坐标
+    self.z     = nil   -- 世界 Z 坐标
+
     -- ── 内部 ─────────────────────────────────────────────
     self._prev = {pitch=0, roll=0, yaw=0}
     self._init = false
@@ -136,6 +141,14 @@ function IMU:read(dt)
         end
     end
     self.speed = math.sqrt(self.vx^2 + self.vz^2)
+
+    -- ── GPS 位置 ──────────────────────────────────────────
+    local gx, gy, gz = gps.locate(0.5)
+    if gx then
+        self.x = gx
+        self.y = gy
+        self.z = gz
+    end
 
     self._init = true
     return self
