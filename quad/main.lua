@@ -139,40 +139,15 @@ local function handle_cmd(line)
         local h = tonumber(parts[2]) or 5
         ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
         ctrl.target_alt = h
-        -- 锁定起飞位置（如有GPS）
-        if imu_state.x then
-            ctrl.target_x = imu_state.x
-            ctrl.target_z = imu_state.z
-            gui:log(string.format("Armed, alt %.1f, GPS locked (%.1f,%.1f)", h, imu_state.x, imu_state.z), "OK")
-        else
-            gui:log(string.format("Armed, target alt %.1f m (no GPS)", h), "OK")
-        end
+        gui:log(string.format("Armed, target alt %.1f m", h), "OK")
     elseif cmd == "disarm" then
         ctrl:disarm()
         gui:log("Disarmed", "WARN")
     elseif cmd == "hover" then
         ctrl:hover(imu_state)
-        if imu_state.x then
-            gui:log(string.format("Hovering, locked (%.1f,%.1f) alt %.1f", imu_state.x, imu_state.z, imu_state.altitude or 0), "OK")
-        else
-            gui:log("Hovering (no GPS)", "OK")
-        end
+        gui:log(string.format("Hovering, alt %.1f", imu_state.altitude or 0), "OK")
     elseif cmd == "goto" then
-        if not imu_state.x then
-            gui:log("No GPS", "ERR")
-        else
-            local x   = tonumber(parts[2])
-            local z   = tonumber(parts[3])
-            local alt = tonumber(parts[4]) or ctrl.target_alt
-            if x and z then
-                ctrl.target_x   = x
-                ctrl.target_z   = z
-                ctrl.target_alt = alt
-                gui:log(string.format("Goto (%.1f,%.1f) alt %.1f", x, z, alt), "OK")
-            else
-                gui:log("Usage: goto <x> <z> [alt]", "WARN")
-            end
-        end
+        gui:log("GPS disabled", "WARN")
     elseif cmd == "alt" then
         local h = tonumber(parts[2])
         if h then ctrl.target_alt = h
@@ -194,11 +169,6 @@ local function handle_cmd(line)
             r[1] or 0, r[2] or 0, r[3] or 0, r[4] or 0), "INFO")
     elseif cmd == "land" then
         gui:log("Landing...", "WARN")
-        -- 锁定当前水平位置再下降（防飘）
-        if imu_state.x then
-            ctrl.target_x = imu_state.x
-            ctrl.target_z = imu_state.z
-        end
         ctrl.target_alt = 0.3
         os.sleep(4)
         ctrl:disarm()

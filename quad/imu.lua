@@ -148,13 +148,7 @@ end
 
 -- 单独调用，放在慢速循环（1~2Hz），避免阻塞控制环
 function IMU:readGPS()
-    local gx, gy, gz = gps.locate(2)
-    if gx then
-        -- gps 返回的 x/z 与飞控坐标系相反，对调修正
-        self.x = gz
-        self.y = gy
-        self.z = gx
-    end
+    -- GPS 已禁用
 end
 
 function IMU:status()
