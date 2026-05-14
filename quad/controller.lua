@@ -72,20 +72,22 @@ end
 function Ctrl:updateOuter(imu_state, dt)
     if not self.armed then return end
 
-    -- altitude loop: PID on height error + climb_rate damping
-    local alt      = imu_state.altitude   or 0
-    local climb    = imu_state.climb_rate or 0
-    local alt_err  = self.target_alt - alt
+    local alt   = imu_state.altitude   or 0
+    local climb = imu_state.climb_rate or 0
 
-    -- integrator freeze when climbing away from target (anti-windup)
-    local freeze_i = (alt_err > 0 and climb > 1.0) or (alt_err < 0 and climb < -1.0)
-    if freeze_i then self.alt:reset() end
+    -- stage 1: altitude error -> target climb rate (m/s)
+    local alt_err        = self.target_alt - alt
+    local target_climb   = clamp(alt_err * 3.0, -C.MAX_CLIMB, C.MAX_CLIMB)
 
-    local thr_delta = self.alt:compute(self.target_alt, alt, dt)
-    -- subtract climb_rate damping to brake before reaching target
-    thr_delta = thr_delta - climb * 8.0
+    -- stage 2: climb rate error -> throttle delta (RPM)
+    local climb_err  = target_climb - climb
+    local thr_delta  = clamp(climb_err * 12.0, -80, 80)
 
-    self.throttle_out = clamp(C.RPM_HOVER + thr_delta, C.RPM_MIN, C.RPM_MAX)
+    -- slow integrator to trim hover offset
+    self._alt_i = (self._alt_i or 0) + alt_err * 0.02 * dt
+    self._alt_i = clamp(self._alt_i, -20, 20)
+
+    self.throttle_out = clamp(C.RPM_HOVER + thr_delta + self._alt_i, C.RPM_MIN, C.RPM_MAX)
 
     -- position loop (needs GPS)
     if self.target_x and imu_state.x then
@@ -139,6 +141,7 @@ function Ctrl:arm(alt, yaw)
     self.target_pitch = 0
     self.target_roll  = 0
     self.throttle_out = C.RPM_HOVER
+    self._alt_i       = 0
     -- reset all integrators
     for _, p in ipairs({
         self.rate_p, self.rate_q, self.rate_r,
