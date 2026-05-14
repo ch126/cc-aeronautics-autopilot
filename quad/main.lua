@@ -91,7 +91,8 @@ local function ctrlLoop()
         local now = os.clock()
         local dt  = math.max(0.001, now - last_t)
         last_t    = now
-        imu_state = imu:read(dt) or imu_state
+        imu:read(dt)
+        imu_state = imu  -- imu object IS the state table
         if ctrl.armed then
             local po, ro, yo = ctrl:updateInner(imu_state, dt)
             mixer:mix(ctrl.throttle_out or C.RPM_HOVER, po, ro, yo)

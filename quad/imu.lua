@@ -115,6 +115,7 @@ function IMU:read(dt)
     end
 
     self._init = true
+    return self  -- return self so caller can use imu:read(dt) as state table
 end
 
 function IMU:status()

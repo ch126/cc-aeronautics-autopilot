@@ -105,8 +105,10 @@ function Ctrl:updateInner(imu_state, dt)
     local rate_q_tgt = clamp(
         self.att_q:compute(self.target_roll,  imu_state.roll  or 0, dt),
         -C.RATE_MAX, C.RATE_MAX)
+    -- yaw: use angle difference to handle 360/0 wrap
+    local yaw_err    = angDiff(self.target_yaw, imu_state.yaw or 0)
     local rate_r_tgt = clamp(
-        self.att_r:compute(self.target_yaw,   imu_state.yaw   or 0, dt),
+        self.att_r:compute(yaw_err, 0, dt),
         -C.RATE_MAX, C.RATE_MAX)
 
     -- rate loop: rate error -> output
