@@ -62,6 +62,8 @@ function IMU.new()
     self.vx    = 0.0   -- North+
     self.vz    = 0.0   -- East+
     self.speed = 0.0   -- 标量
+    self._vx_bias = 0.0  -- 速度传感器零点偏置（arm时标定）
+    self._vz_bias = 0.0
 
     -- ── GPS 位置 ──────────────────────────────────────────
     self.x     = 0.0   -- 相对起飞点 X（航位推算）
@@ -132,13 +134,13 @@ function IMU:read(dt)
     if self.vel_x_p then
         local ok, v = pcall(function() return self.vel_x_p.getVelocity() end)
         if ok and type(v) == "number" then
-            self.vx = v
+            self.vx = v - self._vx_bias
         end
     end
     if self.vel_z_p then
         local ok, v = pcall(function() return self.vel_z_p.getVelocity() end)
         if ok and type(v) == "number" then
-            self.vz = -v  -- Z轴传感器方向相反，取反
+            self.vz = -(v - self._vz_bias)  -- Z轴传感器方向相反，取反
         end
     end
     self.speed = math.sqrt(self.vx^2 + self.vz^2)
@@ -168,6 +170,27 @@ function IMU:read(dt)
 
     self._init = true
     return self
+end
+
+-- 速度传感器偏置标定（arm前静止时调用，采样N次取均值）
+function IMU:calibrate(samples)
+    samples = samples or 10
+    local sx, sz = 0, 0
+    local cx, cz = 0, 0
+    for _ = 1, samples do
+        if self.vel_x_p then
+            local ok, v = pcall(function() return self.vel_x_p.getVelocity() end)
+            if ok and type(v) == "number" then sx = sx + v; cx = cx + 1 end
+        end
+        if self.vel_z_p then
+            local ok, v = pcall(function() return self.vel_z_p.getVelocity() end)
+            if ok and type(v) == "number" then sz = sz + v; cz = cz + 1 end
+        end
+        os.sleep(0.05)
+    end
+    if cx > 0 then self._vx_bias = sx / cx end
+    if cz > 0 then self._vz_bias = sz / cz end
+    return self._vx_bias, self._vz_bias
 end
 
 -- 单独调用，放在慢速循环（1~2Hz），避免阻塞控制环

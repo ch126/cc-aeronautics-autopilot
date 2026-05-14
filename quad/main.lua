@@ -144,6 +144,9 @@ local function handle_cmd(line)
         gui:log("arm disarm hover goto alt yaw land pos motors quit", "INFO")
     elseif cmd == "arm" then
         local h = tonumber(parts[2]) or 5
+        gui:log("Calibrating sensors...", "INFO")
+        local bx, bz = imu:calibrate(8)
+        gui:log(string.format("Bias vx=%.3f vz=%.3f", bx, bz), "INFO")
         imu.x = 0.0   -- 重置航位推算原点
         imu.z = 0.0
         ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
@@ -210,6 +213,9 @@ local function handle_button(action)
         })
         if res then
             local h = tonumber(res[1]) or 5
+            gui:log("Calibrating sensors...", "INFO")
+            local bx, bz = imu:calibrate(8)
+            gui:log(string.format("Bias vx=%.3f vz=%.3f", bx, bz), "INFO")
             imu.x = 0.0   -- 重置航位推算原点
             imu.z = 0.0
             ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
