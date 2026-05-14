@@ -147,10 +147,16 @@ local function handle_cmd(line)
         gui:log("Calibrating sensors...", "INFO")
         local bx, bz = imu:calibrate(8)
         gui:log(string.format("Bias vx=%.3f vz=%.3f", bx, bz), "INFO")
-        imu.x = 0.0   -- 重置航位推算原点
+        imu.x = 0.0
         imu.z = 0.0
         ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
         ctrl.target_alt = h
+        -- 导航台可用时自动启用位置保持（以起飞点为原点目标）
+        if imu.nav_p and C.NAV_BEACON_X then
+            ctrl.target_x = 0.0
+            ctrl.target_z = 0.0
+            gui:log("Nav position hold: ON", "OK")
+        end
         gui:log(string.format("Armed, target alt %.1f m", h), "OK")
     elseif cmd == "disarm" then
         ctrl:disarm()
