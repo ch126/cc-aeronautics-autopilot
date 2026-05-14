@@ -90,19 +90,23 @@ function Ctrl:updateOuter(imu_state, dt)
 
     self.throttle_out = clamp(C.RPM_HOVER + thr_delta + self._alt_i, C.RPM_MIN, C.RPM_MAX)
 
-    -- position loop (needs GPS)
-    if self.target_x and imu_state.x then
-        local ex = self.target_x - imu_state.x
-        local ez = self.target_z - (imu_state.z or 0)
-        -- rotate error into body frame
+    -- position loop: velocity damping to resist horizontal drift
+    -- rotate world velocity into body frame, then tilt against it
+    local vx = imu_state.vx or 0
+    local vz = imu_state.vz or 0
+    if math.abs(vx) > 0.05 or math.abs(vz) > 0.05 then
         local cy = math.cos(math.rad(imu_state.yaw or 0))
         local sy = math.sin(math.rad(imu_state.yaw or 0))
-        local ex_b =  cy * ex + sy * ez
-        local ez_b = -sy * ex + cy * ez
-        self.target_pitch = clamp(
-            self.pos_x:compute(0, -ex_b, dt), -C.ATT_MAX, C.ATT_MAX)
-        self.target_roll  = clamp(
-            self.pos_z:compute(0, -ez_b, dt), -C.ATT_MAX, C.ATT_MAX)
+        -- world -> body frame
+        local vx_b =  cy * vx + sy * vz
+        local vz_b = -sy * vx + cy * vz
+        -- tilt against velocity to brake, limit to ATT_MAX
+        local VEL_GAIN = 3.0  -- deg per m/s
+        self.target_pitch = clamp(-vx_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+        self.target_roll  = clamp( vz_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+    else
+        self.target_pitch = 0
+        self.target_roll  = 0
     end
 end
 

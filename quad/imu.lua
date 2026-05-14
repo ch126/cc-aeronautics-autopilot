@@ -31,24 +31,26 @@ function IMU.new()
     self.vel_p = findP(C.SENSOR_VELOCITY,  "velocity_sensor")
 
     -- ── 姿态角 (deg) ────────────────────────────────────────
-    self.pitch = 0.0   -- 俯仰：+上仰
-    self.roll  = 0.0   -- 横滚：+右倾
-    self.yaw   = 0.0   -- 偏航：0=北 CW+
+    self.pitch = 0.0
+    self.roll  = 0.0
+    self.yaw   = 0.0
 
-    -- ── 角速度 (deg/s)，有限差分 ──────────────────────────
-    self.rate_p = 0.0  -- pitch rate
-    self.rate_q = 0.0  -- roll  rate
-    self.rate_r = 0.0  -- yaw   rate
+    -- ── 角速度 (deg/s) ────────────────────────────────────
+    self.rate_p = 0.0
+    self.rate_q = 0.0
+    self.rate_r = 0.0
 
     -- ── 高度 & 升降速 ──────────────────────────────────────
     self.altitude   = 0.0
-    self.climb_rate = 0.0   -- EMA
+    self.climb_rate = 0.0
     self._prev_alt  = nil
 
-    -- ── 水平速度（标量 + DR方向） ──────────────────────────
-    self.speed = 0.0
+    -- ── 水平速度向量 (m/s, 世界坐标系) ───────────────────
+    self.vx    = 0.0   -- North+
+    self.vz    = 0.0   -- East+
+    self.speed = 0.0   -- 标量
 
-    -- ── 内部上一帧角度（用于角速度估算） ─────────────────
+    -- ── 内部 ─────────────────────────────────────────────
     self._prev = {pitch=0, roll=0, yaw=0}
     self._init = false
 
@@ -106,11 +108,18 @@ function IMU:read(dt)
         end
     end
 
-    -- ── 速度 ───────────────────────────────────────────────
+    -- ── 速度向量 ──────────────────────────────────────────
     if self.vel_p then
         local ok, v = pcall(function() return self.vel_p.getVelocity() end)
-        if ok and type(v) == "number" then
-            self.speed = math.abs(v)
+        if ok then
+            if type(v) == "table" then
+                -- returns {x,y,z} world velocity
+                self.vx    = tonumber(v.x or v[1]) or 0
+                self.vz    = tonumber(v.z or v[3]) or 0
+                self.speed = math.sqrt(self.vx^2 + self.vz^2)
+            elseif type(v) == "number" then
+                self.speed = math.abs(v)
+            end
         end
     end
 
