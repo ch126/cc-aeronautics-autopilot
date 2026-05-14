@@ -125,9 +125,9 @@ end
 -- ── mix and output ────────────────────────────────────────────
 function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
     -- attitude authority: max RPM delta for full deflection
-    local dp = pitch_out * 80   -- max ±80 RPM for pitch
-    local dr = roll_out  * 80   -- max ±80 RPM for roll
-    local dy = yaw_out   * 48   -- max ±48 RPM for yaw
+    local dp = pitch_out * 20   -- max ±20 RPM for pitch
+    local dr = roll_out  * 20   -- max ±20 RPM for roll
+    local dy = yaw_out   * 12   -- max ±12 RPM for yaw
 
     -- negate dp/dr: sensor positive = nose-up/right-tilt,
     -- correction needs opposite motor response
