@@ -116,7 +116,7 @@ C.ALT_I_MAX      = 15    -- altitude integrator clamp (RPM)
 -- ── 水平位置级联参数 ────────────────────────────────────────────
 C.POS_GAIN       = 0.2   -- pos_err -> target_vel (m/s per block)
 C.POS_MAX_VEL    = 0.5   -- max target velocity (m/s)
-C.POS_DEADBAND   = 0.8   -- GPS 死区 (blocks)
+C.POS_DEADBAND   = 0.3   -- 位置死区 (blocks)，0.3 = 约 0.3m
 C.VEL_GAIN       = 1.5   -- vel_err -> tilt angle (deg per m/s)
 C.ATT_MAX        = 10.0  -- max target pitch/roll (deg)
 C.SP_SMOOTH      = 0.08  -- 悬停模式设定值平滑（goto模式自动用0.25）

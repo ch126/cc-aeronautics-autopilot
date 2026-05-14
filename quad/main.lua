@@ -151,11 +151,12 @@ local function handle_cmd(line)
         imu.z = 0.0
         ctrl:arm(imu_state.altitude or 0, imu_state.yaw or 0)
         ctrl.target_alt = h
-        -- 导航台可用时自动启用位置保持（以起飞点为原点目标）
-        if imu.nav_p and C.NAV_BEACON_X then
+        -- 导航台在线时自动启用位置保持（以起飞点为原点目标）
+        -- 即使未配置 NAV_BEACON_X，DR+yaw 修正也能提供基础位置保持
+        if imu.nav_p then
             ctrl.target_x = 0.0
             ctrl.target_z = 0.0
-            gui:log("Nav position hold: ON", "OK")
+            gui:log("Position hold: ON (DR" .. (C.NAV_BEACON_X and "+Nav)" or " only)"), "OK")
         end
         gui:log(string.format("Armed, target alt %.1f m", h), "OK")
     elseif cmd == "disarm" then
@@ -187,11 +188,26 @@ local function handle_cmd(line)
         if y then ctrl.target_yaw = y % 360
             gui:log(string.format("Target yaw -> %.1f deg", ctrl.target_yaw), "OK")
         end
+    elseif cmd == "poshold" then
+        -- 手动开启/关闭位置保持，以当前位置为目标
+        if ctrl.target_x ~= nil then
+            ctrl.target_x = nil
+            ctrl.target_z = nil
+            gui:log("Position hold: OFF", "WARN")
+        else
+            ctrl.target_x = imu_state.x or 0
+            ctrl.target_z = imu_state.z or 0
+            gui:log(string.format("Position hold: ON @ (%.2f, %.2f)", ctrl.target_x, ctrl.target_z), "OK")
+        end
     elseif cmd == "pos" then
         local s = imu_state
         gui:log(string.format("P%.1f R%.1f Y%.1f Alt%.2f Clmb%.2f",
             s.pitch or 0, s.roll or 0, s.yaw or 0,
             s.altitude or 0, s.climb_rate or 0), "INFO")
+        gui:log(string.format("x=%.2f z=%.2f vx=%.3f vz=%.3f tx=%s tz=%s",
+            s.x or 0, s.z or 0, s.vx or 0, s.vz or 0,
+            ctrl.target_x and string.format("%.2f", ctrl.target_x) or "nil",
+            ctrl.target_z and string.format("%.2f", ctrl.target_z) or "nil"), "INFO")
     elseif cmd == "motors" then
         local r = mixer.rpm or {0,0,0,0}
         gui:log(string.format("FL%d FR%d BR%d BL%d",
