@@ -29,7 +29,8 @@ function IMU.new()
     self.gim_p   = findP(C.SENSOR_GIMBAL,   "gimbal_sensor")
     self.alt_p   = findP(C.SENSOR_ALTITUDE,  "altitude_sensor")
     self.nav_p   = findP(C.SENSOR_NAV,       "navigation_table")
-    self.gps_p   = findP(C.SENSOR_GPS,       "gps_sensor")
+    -- GPS：只在明确配置外设名时才启用，不自动扫描（避免误绑定其他传感器）
+    self.gps_p   = C.SENSOR_GPS and peripheral.wrap(C.SENSOR_GPS) or nil
     -- 两个速度传感器，分别朝 X 和 Z 轴
     local all_vel = {}
     peripheral.find("velocity_sensor", function(name, p) all_vel[#all_vel+1] = {name=name, p=p} end)
