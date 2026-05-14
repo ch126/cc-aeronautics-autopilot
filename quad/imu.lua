@@ -28,6 +28,7 @@ function IMU.new()
 
     self.gim_p   = findP(C.SENSOR_GIMBAL,   "gimbal_sensor")
     self.alt_p   = findP(C.SENSOR_ALTITUDE,  "altitude_sensor")
+    self.nav_p   = findP(C.SENSOR_NAV,       "navigation_table")
     -- 两个速度传感器，分别朝 X 和 Z 轴
     local all_vel = {}
     peripheral.find("velocity_sensor", function(name, p) all_vel[#all_vel+1] = {name=name, p=p} end)
@@ -142,6 +143,23 @@ function IMU:read(dt)
     end
     self.speed = math.sqrt(self.vx^2 + self.vz^2)
 
+    -- ── 导航台 Yaw 修正（互补滤波）────────────────────────────
+    -- 原理：nav_table 指向地面固定磁铁，relativeAngle = 磁铁相对飞机朝向
+    -- 飞机绝对朝向 = NAV_BEACON_BEARING - relativeAngle
+    if self.nav_p and C.NAV_BEACON_BEARING then
+        local ok, rel = pcall(function() return self.nav_p.getRelativeAngle() end)
+        if ok and type(rel) == "number" then
+            -- 计算导航台给出的绝对 yaw
+            local nav_yaw = (C.NAV_BEACON_BEARING - rel) % 360
+            -- 互补滤波：gimbal 快速响应 + 导航台慢速修正漂移
+            local alpha = C.NAV_YAW_ALPHA or 0.98
+            -- 找最短角度差方向融合（处理360/0边界）
+            local diff = (nav_yaw - self.yaw) % 360
+            if diff > 180 then diff = diff - 360 end
+            self.yaw = (self.yaw + (1.0 - alpha) * diff) % 360
+        end
+    end
+
     self._init = true
     return self
 end
@@ -153,8 +171,8 @@ end
 
 function IMU:status()
     local function yn(p) return p and "OK" or "--" end
-    return string.format("gim:%s alt:%s vx:%s vz:%s",
-        yn(self.gim_p), yn(self.alt_p), yn(self.vel_x_p), yn(self.vel_z_p))
+    return string.format("gim:%s alt:%s vx:%s vz:%s nav:%s",
+        yn(self.gim_p), yn(self.alt_p), yn(self.vel_x_p), yn(self.vel_z_p), yn(self.nav_p))
 end
 
 return IMU

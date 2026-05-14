@@ -60,12 +60,21 @@ C.NAV_HZ       = 20     -- 外环（位置）控制频率 Hz（与内环合并�
 C.CTRL_DT      = 1 / 20 -- 内环 dt
 C.NAV_DT       = 1 / 20 -- 外环 dt
 
--- ── 传感器外设名称（nil=自动扫描）─────────────────────────────
+-- ── 传感器外设名称（nil=自动扫描）─────────────────────────
 C.SENSOR_GIMBAL   = nil  -- gimbal_sensor  -> getAngles() {pitch,roll,yaw}
 C.SENSOR_ALTITUDE = nil  -- altitude_sensor -> getHeight()
 -- 两个速度传感器：一个朝 X 轴，一个朝 Z 轴（nil=自动找第一个）
 C.SENSOR_VEL_X    = nil  -- velocity_sensor 朝 X 轴 -> getVelocity() 返回标量 m/s
 C.SENSOR_VEL_Z    = nil  -- velocity_sensor 朝 Z 轴 -> getVelocity() 返回标量 m/s
+C.SENSOR_NAV      = nil  -- navigation_table -> getRelativeAngle() 导航台修正yaw
+
+-- ── 导航台 Heading 修正 ────────────────────────────────────────
+-- 将罗盘/磁铁放在地面，飞机上装导航台
+-- NAV_BEACON_BEARING：从起飞点看导航台的绝对方位角（度，北=0，东=90）
+-- 设为 nil 则禁用导航台修正
+C.NAV_BEACON_BEARING = nil   -- 例如：0 = 磁铁在正北方
+-- 互补滤波系数：gimbal占比（越大=越信gimbal，越小=越信导航台）
+C.NAV_YAW_ALPHA      = 0.98  -- 0.98 = 慢速漂移修正，快速旋转靠gimbal
 
 -- ── 飞行参数 ───────────────────────────────────────────────────
 C.MAX_TILT       = 25.0  -- max tilt angle (deg)
