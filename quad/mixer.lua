@@ -102,7 +102,7 @@ end
 -- 真实螺旋桨有惯性，RPM不能瞬间到达目标值
 -- alpha越小=电机响应越慢（越重的桨用越小的值）
 -- 20Hz下 alpha=0.4 约等于时间常数 ~75ms
-local MOTOR_ALPHA = 0.4
+local MOTOR_ALPHA = 0.65  -- 电机响应速度（越大越快，越小越平滑）
 
 local function applyRPMs(self, r1, r2, r3, r4)
     self.rpm = {r1, r2, r3, r4}
@@ -136,9 +136,9 @@ end
 
 -- ── mix and output ────────────────────────────────────────────
 function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
-    local dp = pitch_out * 20
-    local dr = roll_out  * 20
-    local dy = yaw_out   * 12
+    local dp = pitch_out * 12
+    local dr = roll_out  * 12
+    local dy = yaw_out   * 8
 
     local r1 = throttle - dp - dr - dy   -- M1 FL CCW
     local r2 = throttle - dp + dr + dy   -- M2 FR CW
