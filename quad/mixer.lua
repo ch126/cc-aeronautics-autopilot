@@ -136,9 +136,9 @@ end
 
 -- ── mix and output ────────────────────────────────────────────
 function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
-    local dp = pitch_out * 12
-    local dr = roll_out  * 12
-    local dy = yaw_out   * 8
+    local dp = pitch_out * 8
+    local dr = roll_out  * 8
+    local dy = yaw_out   * 5
 
     local r1 = throttle - dp - dr - dy   -- M1 FL CCW
     local r2 = throttle - dp + dr + dy   -- M2 FR CW

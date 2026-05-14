@@ -19,6 +19,7 @@ local function make_pid(cfg)
         kd           = cfg.kd   or 0.0,
         integral_max = cfg.imax or cfg.integral_max or math.huge,
         output_max   = cfg.omax or cfg.output_max   or math.huge,
+        deriv_max    = cfg.dmax or cfg.deriv_max    or math.huge,
     })
 end
 

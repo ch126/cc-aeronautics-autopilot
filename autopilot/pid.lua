@@ -15,8 +15,9 @@ function PID.new(cfg)
         kd           = cfg.kd           or 0.0,
         integral_max = cfg.integral_max or math.huge,
         output_max   = cfg.output_max   or math.huge,
+        deriv_max    = cfg.deriv_max    or math.huge,  -- D项单独限幅
         _integral    = 0.0,
-        _last_meas   = 0.0,   -- D项对测量值求导，避免setpoint突变时derivative kick
+        _last_meas   = 0.0,
         _initialized = false,
     }, PID)
 end
@@ -47,6 +48,8 @@ function PID:compute(setpoint, measured, dt)
     local derivative = 0.0
     if self._initialized then
         derivative = -(measured - self._last_meas) / dt
+        -- D项单独限幅，防止噪声脉冲引起大幅输出
+        derivative = math.max(-self.deriv_max, math.min(self.deriv_max, derivative))
     end
     self._initialized = true
     self._last_meas   = measured
