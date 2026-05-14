@@ -88,13 +88,24 @@ C.PID_ATT_PITCH  = { kp=3.0,  ki=0.0,  kd=0.0,  imax=0,  omax=120 }
 C.PID_ATT_ROLL   = { kp=3.0,  ki=0.0,  kd=0.0,  imax=0,  omax=120 }
 C.PID_ATT_YAW    = { kp=2.0,  ki=0.02, kd=0.05, imax=20, omax=90  }
 
+-- ── 高度级联参数 ───────────────────────────────────────────────
+C.ALT_POS_GAIN   = 2.0   -- alt_err -> target_climb (m/s per block)
+C.ALT_MAX_CLIMB  = 1.5   -- max target climb rate (m/s)
+C.ALT_VEL_GAIN   = 20.0  -- climb_err -> thr_delta (RPM per m/s)
+C.ALT_MAX_DELTA  = 80    -- max throttle delta (RPM)
+C.ALT_I_GAIN     = 0.02  -- altitude integrator gain
+C.ALT_I_MAX      = 20    -- altitude integrator clamp (RPM)
+
+-- ── 水平位置级联参数 ────────────────────────────────────────────
+C.POS_GAIN       = 0.3   -- pos_err -> target_vel (m/s per block)
+C.POS_MAX_VEL    = 1.0   -- max target velocity (m/s)
+C.POS_DEADBAND   = 0.5   -- GPS 死区：误差小于此值时不修正 (blocks)
+C.VEL_GAIN       = 1.5   -- vel_err -> tilt angle (deg per m/s)
+
 -- ── 外环 PID：高度（10Hz）────────────────────────────────────────
--- 输入：目标高度(blocks) - 实际高度，输出：油门增量(RPM)
--- climb_rate damping (x8.0) is applied separately in controller.lua
 C.PID_ALT        = { kp=5.0,  ki=0.05, kd=0.0,  imax=10, omax=50  }
 
--- ── 外环 PID：水平位置（10Hz，需GPS）─────────────────────────────
--- 输出：目标倾斜角(deg)
+-- ── 外环 PID：水平位置（10Hz，已弃用，保留备用）────────────────
 C.PID_POS_X      = { kp=1.2,  ki=0.0,  kd=0.3,  imax=0,  omax=25 }
 C.PID_POS_Z      = { kp=1.2,  ki=0.0,  kd=0.3,  imax=0,  omax=25 }
 

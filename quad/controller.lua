@@ -38,13 +38,6 @@ function Ctrl.new()
     self.att_q  = make_pid(C.PID_ATT_ROLL)
     self.att_r  = make_pid(C.PID_ATT_YAW)
 
-    -- altitude loop PID  (input: alt error m -> output: throttle delta RPM)
-    self.alt    = make_pid(C.PID_ALT)
-
-    -- position loop PIDs  (input: pos error m -> output: target pitch/roll deg)
-    self.pos_x  = make_pid(C.PID_POS_X)
-    self.pos_z  = make_pid(C.PID_POS_Z)
-
     -- targets
     self.target_alt   = 0
     self.target_yaw   = 0
@@ -55,6 +48,7 @@ function Ctrl.new()
 
     self.throttle_out = 0
     self.armed        = false
+    self._alt_i       = 0
 
     return self
 end
@@ -75,53 +69,45 @@ function Ctrl:updateOuter(imu_state, dt)
     local alt   = imu_state.altitude   or 0
     local climb = imu_state.climb_rate or 0
 
-    -- stage 1: altitude error -> target climb rate (m/s)
-    -- use smaller max climb so it decelerates earlier
+    -- ── 高度级联：误差 → 目标爬升率 → 油门增量 ──────────────
     local alt_err      = self.target_alt - alt
-    local target_climb = clamp(alt_err * 2.0, -1.5, 1.5)
+    local target_climb = clamp(alt_err * C.ALT_POS_GAIN, -C.ALT_MAX_CLIMB, C.ALT_MAX_CLIMB)
+    local climb_err    = target_climb - climb
+    local thr_delta    = clamp(climb_err * C.ALT_VEL_GAIN, -C.ALT_MAX_DELTA, C.ALT_MAX_DELTA)
 
-    -- stage 2: climb rate error -> throttle delta (RPM)
-    local climb_err = target_climb - climb
-    local thr_delta = clamp(climb_err * 20.0, -80, 80)
-
-    -- slow integrator to trim hover offset
-    self._alt_i = (self._alt_i or 0) + alt_err * 0.02 * dt
-    self._alt_i = clamp(self._alt_i, -20, 20)
+    -- 慢速积分器：消除悬停偏置
+    self._alt_i = self._alt_i + alt_err * C.ALT_I_GAIN * dt
+    self._alt_i = clamp(self._alt_i, -C.ALT_I_MAX, C.ALT_I_MAX)
 
     self.throttle_out = clamp(C.RPM_HOVER + thr_delta + self._alt_i, C.RPM_MIN, C.RPM_MAX)
 
-    -- position loop: GPS position hold (cascade: pos_err -> target_vel -> tilt)
-    -- Falls back to pure velocity damping if no GPS fix
+    -- ── 水平位置级联：GPS误差 → 目标速度 → 倾斜角 ───────────
     local vx = imu_state.vx or 0
     local vz = imu_state.vz or 0
     local cy = math.cos(math.rad(imu_state.yaw or 0))
     local sy = math.sin(math.rad(imu_state.yaw or 0))
 
-    local MAX_VEL   = 1.0   -- max target velocity from position error (m/s)
-    local VEL_GAIN  = 1.5   -- deg tilt per m/s velocity error
-    local POS_GAIN  = 0.3   -- (m/s) per block of position error
-
     local target_vx, target_vz = 0, 0
 
     if self.target_x and imu_state.x then
-        -- position error -> target world velocity
         local ex = self.target_x - imu_state.x
         local ez = self.target_z - imu_state.z
-        target_vx = clamp(ex * POS_GAIN, -MAX_VEL, MAX_VEL)
-        target_vz = clamp(ez * POS_GAIN, -MAX_VEL, MAX_VEL)
+        local dist = math.sqrt(ex*ex + ez*ez)
+        -- GPS 死区：噪声范围内不修正，防止抖振
+        if dist > C.POS_DEADBAND then
+            target_vx = clamp(ex * C.POS_GAIN, -C.POS_MAX_VEL, C.POS_MAX_VEL)
+            target_vz = clamp(ez * C.POS_GAIN, -C.POS_MAX_VEL, C.POS_MAX_VEL)
+        end
     end
 
-    -- velocity error in world frame
-    local dvx = target_vx - vx
-    local dvz = target_vz - vz
-
-    -- rotate to body frame
+    -- 速度误差（世界系）→ 机体系 → 倾斜角
+    local dvx   = target_vx - vx
+    local dvz   = target_vz - vz
     local dvx_b =  cy * dvx + sy * dvz
     local dvz_b = -sy * dvx + cy * dvz
 
-    -- tilt to correct velocity error
-    self.target_pitch = clamp(-dvx_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-    self.target_roll  = clamp(-dvz_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+    self.target_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+    self.target_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
 end
 
 -- inner loop: attitude + rate  (call at CTRL_HZ ~50Hz)
@@ -165,7 +151,6 @@ function Ctrl:arm(alt, yaw)
     for _, p in ipairs({
         self.rate_p, self.rate_q, self.rate_r,
         self.att_p,  self.att_q,  self.att_r,
-        self.alt,    self.pos_x,  self.pos_z,
     }) do p:reset() end
 end
 
