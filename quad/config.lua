@@ -88,7 +88,8 @@ C.PID_ATT_YAW    = { kp=2.0,  ki=0.02, kd=0.05, imax=20, omax=90  }
 
 -- ── 外环 PID：高度（10Hz）────────────────────────────────────────
 -- 输入：目标高度(blocks) - 实际高度，输出：油门增量(RPM)
-C.PID_ALT        = { kp=6.0,  ki=0.1,  kd=3.0,  imax=15, omax=60  }
+-- climb_rate damping (x8.0) is applied separately in controller.lua
+C.PID_ALT        = { kp=5.0,  ki=0.05, kd=0.0,  imax=10, omax=50  }
 
 -- ── 外环 PID：水平位置（10Hz，需GPS）─────────────────────────────
 -- 输出：目标倾斜角(deg)

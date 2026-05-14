@@ -72,9 +72,19 @@ end
 function Ctrl:updateOuter(imu_state, dt)
     if not self.armed then return end
 
-    -- altitude loop: error -> throttle
-    local alt_err     = self.target_alt - (imu_state.altitude or 0)
-    local thr_delta   = self.alt:compute(self.target_alt, imu_state.altitude or 0, dt)
+    -- altitude loop: PID on height error + climb_rate damping
+    local alt      = imu_state.altitude   or 0
+    local climb    = imu_state.climb_rate or 0
+    local alt_err  = self.target_alt - alt
+
+    -- integrator freeze when climbing away from target (anti-windup)
+    local freeze_i = (alt_err > 0 and climb > 1.0) or (alt_err < 0 and climb < -1.0)
+    if freeze_i then self.alt:reset() end
+
+    local thr_delta = self.alt:compute(self.target_alt, alt, dt)
+    -- subtract climb_rate damping to brake before reaching target
+    thr_delta = thr_delta - climb * 8.0
+
     self.throttle_out = clamp(C.RPM_HOVER + thr_delta, C.RPM_MIN, C.RPM_MAX)
 
     -- position loop (needs GPS)
