@@ -350,14 +350,19 @@ function GUI:drawStatus(s)
     if #pry > CW - 1 then pry = pry:sub(1, CW-1) end
     write_at(t, 2, r+7, pry .. string.rep(" ", CW - 1 - #pry), TH.value, TH.panel_bg)
 
-    -- Row r+8: GPS pos or "--"
-    local pos_str
-    if s.x then
-        pos_str = string.format("GPS X:%.0f  Z:%.0f", s.x, s.z)
+    -- Row r+8: GPS pos + 锁定/漂移状态
+    local pos_str, pos_c
+    if not s.x then
+        pos_str = "GPS: NO SIGNAL"
+        pos_c   = TH.armed_off   -- 红色
+    elseif s.gps_locked then
+        pos_str = string.format("GPS\x10 X:%.0f Z:%.0f", s.x, s.z)
+        pos_c   = TH.armed_on    -- 绿色：位置锁定
     else
-        pos_str = "GPS: --"
+        pos_str = string.format("GPS~ X:%.0f Z:%.0f", s.x, s.z)
+        pos_c   = TH.log_warn    -- 黄色：有信号但未锁定（漂移中）
     end
-    write_at(t, 2, r+8, pos_str .. string.rep(" ", CW - 1 - #pos_str), TH.label, TH.panel_bg)
+    write_at(t, 2, r+8, pos_str .. string.rep(" ", CW - 1 - #pos_str), pos_c, TH.panel_bg)
 
     -- Row r+9: sensors / uptime
     local sens_str = string.format("%s  t:%.0fs", s.sensors or "--", s.elapsed or 0)
