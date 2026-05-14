@@ -36,7 +36,7 @@ C.MOTOR_BR = nil   -- M3 右后  (逆时针)
 C.MOTOR_BL = nil   -- M4 左后  (顺时针)
 
 -- 转速控制器外设类型名（根据实际 mod 填写）
-C.MOTOR_TYPE = "Create_SpeedController"  -- 或 "rotationSpeedController" 等
+C.MOTOR_TYPE = "Create_RotationSpeedController"
 
 -- ── 转速参数 ───────────────────────────────────────────────────
 C.RPM_MAX      = 256    -- 最大转速 (RPM)，不超过转速控制器上限

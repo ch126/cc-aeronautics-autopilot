@@ -79,9 +79,9 @@ end
 local function setMotorRPM(motor, rpm)
     if not motor then return end
     rpm = math.max(C.RPM_MIN, math.min(C.RPM_MAX, rpm))
-    local ok = pcall(motor.p.setTargetSpeed, math.floor(rpm + 0.5))
-    if not ok then
-        pcall(motor.p.setSpeed, math.floor(rpm + 0.5))
+    local fn = motor.p.setTargetSpeed
+    if fn then
+        fn(math.floor(rpm + 0.5))
     end
 end
 
