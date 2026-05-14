@@ -124,10 +124,10 @@ end
 
 -- ── mix and output ────────────────────────────────────────────
 function Mixer:mix(throttle, pitch_out, roll_out, yaw_out)
-    local half_range = (C.RPM_MAX - C.RPM_MIN) * 0.5
-    local dp = pitch_out * half_range * 0.5
-    local dr = roll_out  * half_range * 0.5
-    local dy = yaw_out   * half_range * 0.3
+    -- attitude authority: max RPM delta for full deflection
+    local dp = pitch_out * 20   -- max ±20 RPM for pitch
+    local dr = roll_out  * 20   -- max ±20 RPM for roll
+    local dy = yaw_out   * 12   -- max ±12 RPM for yaw
 
     -- negate dp/dr: sensor positive = nose-up/right-tilt,
     -- correction needs opposite motor response
