@@ -116,7 +116,7 @@ function Ctrl:updateOuter(imu_state, dt)
     local dvz_b = -sy * dvx + cy * dvz
 
     -- 速度死区：仅在纯悬停（无 goto 目标）且速度极小时才置零
-    local VEL_DB = 0.12  -- m/s
+    local VEL_DB = 0.25  -- m/s，加大死区覆盖气流噪声
     local has_pos_target = (self.target_x ~= nil)
     if not has_pos_target and math.abs(vx) < VEL_DB and math.abs(vz) < VEL_DB then
         dvx_b, dvz_b = 0, 0

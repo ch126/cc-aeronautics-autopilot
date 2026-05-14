@@ -129,8 +129,6 @@ function IMU:read(dt)
     end
 
     -- ── 速度向量 ──────────────────────────────────────────
-    -- vel_x_p：朝 X 轴安装，getVelocity() 返回 X 方向速度 (m/s)
-    -- vel_z_p：朝 Z 轴安装，getVelocity() 返回 Z 方向速度 (m/s)
     if self.vel_x_p then
         local ok, v = pcall(function() return self.vel_x_p.getVelocity() end)
         if ok and type(v) == "number" then
@@ -140,10 +138,32 @@ function IMU:read(dt)
     if self.vel_z_p then
         local ok, v = pcall(function() return self.vel_z_p.getVelocity() end)
         if ok and type(v) == "number" then
-            self.vz = -(v - self._vz_bias)  -- Z轴传感器方向相反，取反
+            self.vz = -(v - self._vz_bias)
         end
     end
     self.speed = math.sqrt(self.vx^2 + self.vz^2)
+
+    -- ── 飞行中自适应偏置估计 ───────────────────────────────
+    -- 当姿态接近水平（pitch/roll < 2°）且速度很小时，
+    -- 认为剩余速度读数全是偏置，缓慢更新之
+    local abs_pitch = math.abs(self.pitch)
+    local abs_roll  = math.abs(self.roll)
+    if self._init and abs_pitch < 2.0 and abs_roll < 2.0 and self.speed < 0.3 then
+        -- 极慢速追踪（约10秒时间常数），不影响正常飞行
+        local BIAS_ALPHA = 0.002
+        if self.vel_x_p then
+            local ok, v = pcall(function() return self.vel_x_p.getVelocity() end)
+            if ok and type(v) == "number" then
+                self._vx_bias = self._vx_bias + BIAS_ALPHA * (v - self._vx_bias)
+            end
+        end
+        if self.vel_z_p then
+            local ok, v = pcall(function() return self.vel_z_p.getVelocity() end)
+            if ok and type(v) == "number" then
+                self._vz_bias = self._vz_bias + BIAS_ALPHA * (v - self._vz_bias)
+            end
+        end
+    end
 
     -- ── 航位推算：速度积分得相对位置 ──────────────────────
     if self._init and dt and dt > 0 then
