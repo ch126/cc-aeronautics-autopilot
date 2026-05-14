@@ -100,7 +100,7 @@ C.ALT_I_MAX      = 15    -- altitude integrator clamp (RPM)
 C.POS_GAIN       = 0.15  -- pos_err -> target_vel (m/s per block)
 C.POS_MAX_VEL    = 0.4   -- max target velocity (m/s)
 C.POS_DEADBAND   = 0.8   -- GPS 死区 (blocks)
-C.VEL_GAIN       = 0.6   -- vel_err -> tilt angle (deg per m/s)
+C.VEL_GAIN       = 0.4   -- vel_err -> tilt angle (deg per m/s)
 C.ATT_MAX        = 8.0   -- max target pitch/roll (deg)
 C.SP_SMOOTH      = 0.08  -- 设定值平滑（越小越平滑）
 

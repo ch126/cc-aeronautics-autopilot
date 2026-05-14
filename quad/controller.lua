@@ -124,10 +124,15 @@ function Ctrl:updateOuter(imu_state, dt)
     local raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
 
     -- ── 设定值平滑（一阶低通，防止阶跃输入）─────────────────
-    -- 类似真实FC的 tpa / setpoint smoothing
-    local SP_ALPHA = C.SP_SMOOTH or 0.3  -- 0=完全平滑, 1=无平滑
+    local SP_ALPHA = C.SP_SMOOTH or 0.08
     self.target_pitch = self.target_pitch + SP_ALPHA * (raw_pitch - self.target_pitch)
     self.target_roll  = self.target_roll  + SP_ALPHA * (raw_roll  - self.target_roll)
+
+    -- ── 设定值衰减：无外部指令时缓慢归零，防止传感器漂移积累 ──
+    -- 等效于对 target_pitch/roll 加一个弱弹簧拉向0
+    local DECAY = 0.05  -- 每次外环衰减5%
+    self.target_pitch = self.target_pitch * (1.0 - DECAY)
+    self.target_roll  = self.target_roll  * (1.0 - DECAY)
 end
 
 -- inner loop: attitude  (call at CTRL_HZ ~20Hz)
