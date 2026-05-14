@@ -103,7 +103,7 @@ function Ctrl:updateOuter(imu_state, dt)
         -- tilt against velocity to brake, limit to ATT_MAX
         local VEL_GAIN = 3.0  -- deg per m/s
         self.target_pitch = clamp(-vx_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-        self.target_roll  = clamp( vz_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+        self.target_roll  = clamp(-vz_b * VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
     else
         self.target_pitch = 0
         self.target_roll  = 0
