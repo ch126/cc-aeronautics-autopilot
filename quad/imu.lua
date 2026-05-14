@@ -175,40 +175,43 @@ function IMU:read(dt)
     if self.nav_p and C.NAV_BEACON_BEARING then
         local ok, rel = pcall(function() return self.nav_p.getRelativeAngle() end)
         if ok and type(rel) == "number" then
-            -- ① Yaw 修正：绝对朝向 = 信标方位角 - 相对角
+            -- ① Yaw 修正：飞机绝对朝向 = 信标绝对方位角 - 相对角
             local nav_yaw = (C.NAV_BEACON_BEARING - rel) % 360
             local alpha = C.NAV_YAW_ALPHA or 0.98
             local diff = (nav_yaw - self.yaw) % 360
             if diff > 180 then diff = diff - 360 end
             self.yaw = (self.yaw + (1.0 - alpha) * diff) % 360
 
-            -- ② 位置修正：利用方位角 + 已知信标坐标，修正DR漂移
-            -- 飞机到信标的绝对方位角（世界系，北=0°）
-            if C.NAV_BEACON_X and C.NAV_BEACON_Z then
-                local abs_bearing_rad = math.rad(nav_yaw)
-                -- 从当前DR位置出发，计算预期方位角
+            -- ② 位置修正：飞机到信标的绝对方位角 = yaw + relativeAngle
+            if C.NAV_BEACON_X ~= nil and C.NAV_BEACON_Z ~= nil then
+                -- 导航台测量：飞机鼻指向 + 相对角 = 信标绝对方位角
+                local measured_bearing_deg = (self.yaw + rel) % 360
+                local measured_bearing_rad = math.rad(measured_bearing_deg)
+
+                -- DR预测：从当前估计位置看信标的方位角
                 local dbx = C.NAV_BEACON_X - self.x
                 local dbz = C.NAV_BEACON_Z - self.z
-                local dist = math.sqrt(dbx*dbx + dbz*dbz)
-                if dist > 0.5 then
-                    -- 预期方位角（DR计算）
-                    local expected_bearing_rad = math.atan(dbx, dbz)  -- atan2(X,Z) = 北偏东
-                    -- 实际方位角（导航台测量）
-                    local measured_bearing_rad = abs_bearing_rad
-                    -- 方位角差 → 垂直于视线方向的位置误差
+                local dist = math.sqrt(dbx * dbx + dbz * dbz)
+
+                if dist > 1.0 then
+                    -- atan2(X, Z)：北=+Z时朝向，北=0°，东=90°
+                    local expected_bearing_rad = math.atan(dbx, dbz)
+
+                    -- 方位角误差（DR与测量的差）
                     local bearing_err = measured_bearing_rad - expected_bearing_rad
-                    -- 归一化到 -π..π
                     while bearing_err >  math.pi do bearing_err = bearing_err - 2*math.pi end
                     while bearing_err < -math.pi do bearing_err = bearing_err + 2*math.pi end
-                    -- 把方位角误差转换成横向位置修正
-                    -- 横向偏移 ≈ dist * sin(bearing_err)
-                    local lateral_err = dist * math.sin(bearing_err)
-                    -- 横向方向（垂直于信标方向，世界系）
+
+                    -- 横向位置误差 = dist × sin(角度差)
+                    -- 修正方向：垂直于信标视线，顺时针为正
+                    local lateral = dist * math.sin(bearing_err)
+                    -- 垂直于信标方向的单位向量（右手）
                     local perp_x =  math.cos(expected_bearing_rad)
                     local perp_z = -math.sin(expected_bearing_rad)
+
                     local pa = C.NAV_POS_ALPHA or 0.05
-                    self.x = self.x + pa * lateral_err * perp_x
-                    self.z = self.z + pa * lateral_err * perp_z
+                    self.x = self.x + pa * lateral * perp_x
+                    self.z = self.z + pa * lateral * perp_z
                 end
             end
         end
