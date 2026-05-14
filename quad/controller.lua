@@ -130,31 +130,23 @@ function Ctrl:updateOuter(imu_state, dt)
     self.target_roll  = self.target_roll  + SP_ALPHA * (raw_roll  - self.target_roll)
 end
 
--- inner loop: attitude + rate  (call at CTRL_HZ ~50Hz)
+-- inner loop: attitude  (call at CTRL_HZ ~20Hz)
 -- returns pitch_out, roll_out, yaw_out  (-1..1)
 function Ctrl:updateInner(imu_state, dt)
     if not self.armed then return 0, 0, 0 end
 
-    -- attitude loop: angle error -> target rate
-    local rate_p_tgt = clamp(
-        self.att_p:compute(self.target_pitch, imu_state.pitch or 0, dt),
-        -C.RATE_MAX, C.RATE_MAX)
-    local rate_q_tgt = clamp(
-        self.att_q:compute(self.target_roll,  imu_state.roll  or 0, dt),
-        -C.RATE_MAX, C.RATE_MAX)
-    -- yaw: use angle difference to handle 360/0 wrap
-    local yaw_err    = angDiff(self.target_yaw, imu_state.yaw or 0)
-    local rate_r_tgt = clamp(
-        self.att_r:compute(yaw_err, 0, dt),
-        -C.RATE_MAX, C.RATE_MAX)
-
-    -- rate loop: rate error -> output
+    -- 单环姿态控制：角度误差 → 直接输出（跳过 rate loop）
+    -- 有限差分估算的角速度太噪，rate loop 在20Hz下会放大震荡
     local pitch_out = clamp(
-        self.rate_p:compute(rate_p_tgt, imu_state.rate_p or 0, dt), -1, 1)
+        self.att_p:compute(self.target_pitch, imu_state.pitch or 0, dt) / C.RATE_MAX,
+        -1, 1)
     local roll_out  = clamp(
-        self.rate_q:compute(rate_q_tgt, imu_state.rate_q or 0, dt), -1, 1)
+        self.att_q:compute(self.target_roll,  imu_state.roll  or 0, dt) / C.RATE_MAX,
+        -1, 1)
+    local yaw_err   = angDiff(self.target_yaw, imu_state.yaw or 0)
     local yaw_out   = clamp(
-        self.rate_r:compute(rate_r_tgt, imu_state.rate_r or 0, dt), -1, 1)
+        self.att_r:compute(yaw_err, 0, dt) / C.RATE_MAX,
+        -1, 1)
 
     return pitch_out, roll_out, yaw_out
 end
@@ -169,7 +161,6 @@ function Ctrl:arm(alt, yaw)
     self._alt_i       = 0
     -- reset all integrators
     for _, p in ipairs({
-        self.rate_p, self.rate_q, self.rate_r,
         self.att_p,  self.att_q,  self.att_r,
     }) do p:reset() end
 end

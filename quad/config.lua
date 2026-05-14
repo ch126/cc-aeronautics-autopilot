@@ -82,9 +82,10 @@ C.PID_RATE_ROLL  = { kp=0.12, ki=0.0,  kd=0.0,  imax=0,  omax=12 }
 C.PID_RATE_YAW   = { kp=0.25, ki=0.0,  kd=0.0,  imax=0,  omax=10 }
 
 -- ── 中环 PID：姿态角（20Hz）──────────────────────────────────────
-C.PID_ATT_PITCH  = { kp=1.5,  ki=0.0,  kd=0.0,  imax=0,  omax=45  }
-C.PID_ATT_ROLL   = { kp=1.5,  ki=0.0,  kd=0.0,  imax=0,  omax=45  }
-C.PID_ATT_YAW    = { kp=1.5,  ki=0.02, kd=0.0,  imax=15, omax=45  }
+-- 直接输出除以 RATE_MAX 得到 -1..1，不再走 rate loop
+C.PID_ATT_PITCH  = { kp=30.0, ki=0.0,  kd=0.0,  imax=0,  omax=120 }
+C.PID_ATT_ROLL   = { kp=30.0, ki=0.0,  kd=0.0,  imax=0,  omax=120 }
+C.PID_ATT_YAW    = { kp=20.0, ki=0.1,  kd=0.0,  imax=30, omax=90  }
 
 -- ── 高度级联参数 ───────────────────────────────────────────────
 C.ALT_POS_GAIN   = 1.5   -- alt_err -> target_climb (m/s per block)
