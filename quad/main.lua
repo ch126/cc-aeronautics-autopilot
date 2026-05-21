@@ -44,8 +44,9 @@ local imu_state   = {}
 local running     = true
 local ctrl_dt     = 1 / C.CTRL_HZ
 local nav_dt      = 1 / C.NAV_HZ
-local start_t     = os.clock()
-local _nav_landing = false   -- nav_arrived 触发的自动降落标志
+local start_t      = os.clock()
+local _nav_landing  = false   -- nav_arrived 触发的自动降落标志
+local _manual_enabled = false -- 手动操控模式标志
 
 local imu   = IMU.new()
 local mixer = Mix.new()
@@ -472,8 +473,6 @@ end
 gui:drawInput()
 
 -- ── 手动操控循环（20Hz，与 ctrlLoop 同频）────────────────────
-local _manual_enabled = false
-
 local function manualLoop()
     while running do
         local now = os.clock()
