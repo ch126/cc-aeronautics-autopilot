@@ -78,4 +78,11 @@ Config.OBSTACLE = {
 -- -- Log level -------------------------------------------------
 Config.LOG_LEVEL = "INFO"  -- DEBUG | INFO | WARN | ERROR
 
+-- -- Velocity control mode (MODE A) ---------------------------
+-- Used when helm exposes setVelocity(vx, vy, vz).
+-- VEL_KP : proportional gain  position_error -> desired_speed
+--          e.g. 0.5 means 10-block error -> 5 m/s target speed
+-- MAX_SPEED is already defined above and acts as the speed cap.
+Config.VEL_KP = 0.5  -- position error -> velocity gain
+
 return Config
