@@ -1,20 +1,20 @@
 -- =============================================================
 --  install.lua
---  一键部署脚本 —— 在 CC:Tweaked 电脑中运行
+  -- CC:Tweaked
 --
---  【推荐】游戏内一键安装（仅需运行这一条命令）：
+
 --
 --    wget https://raw.githubusercontent.com/ch126/cc-aeronautics-autopilot/main/install.lua
 --    lua install.lua
 --
---  安装完成后直接运行：
+
 --    lua autopilot/main.lua
---  或重启电脑（startup.lua 会自动启动）
+  -- startup.lua
 -- =============================================================
 
 local BASE_URL = "https://raw.githubusercontent.com/ch126/cc-aeronautics-autopilot/main/"
 
--- 要下载的文件列表（相对路径）
+
 local FILES = {
     "autopilot/config.lua",
     "autopilot/vec3.lua",
@@ -27,7 +27,7 @@ local FILES = {
 }
 
 local function mkdir(path)
-    -- 确保目录存在
+
     if not fs.exists(path) then
         fs.makeDir(path)
     end
@@ -36,26 +36,26 @@ end
 local function download(url, dest)
     local resp = http.get(url)
     if not resp then
-        printError("下载失败: " .. url)
+        print("FAIL: " .. url)
         return false
     end
     local content = resp.readAll()
     resp.close()
 
-    -- 确保父目录存在
+
     local dir = fs.getDir(dest)
     if dir ~= "" then mkdir(dir) end
 
     local f = fs.open(dest, "w")
     f.write(content)
     f.close()
-    print("  ✓ " .. dest)
+    print("  OK: " .. dest)
     return true
 end
 
-print("====================================")
-print("  Create:Aeronautics 自动驾驶安装器")
-print("====================================")
+print("======================================")
+print("  Create:Aeronautics Autopilot Installer")
+print("======================================")
 mkdir("autopilot")
 
 local success = 0
@@ -66,9 +66,9 @@ for _, file in ipairs(FILES) do
     end
 end
 
-print(string.format("\n安装完成 %d/%d 个文件", success, #FILES))
+print(string.format("\nInstalled %d/%d files", success, #FILES))
 if success == #FILES then
-    print("重启后自动运行，或手动执行: lua autopilot/main.lua")
+    print("Reboot or run: lua autopilot/main.lua")
 else
-    printError("部分文件下载失败，请检查 HTTP 权限和 URL 配置")
+    print("ERROR: Some files failed. Check HTTP access and URL.")
 end

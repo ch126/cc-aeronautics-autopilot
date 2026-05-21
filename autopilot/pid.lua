@@ -1,12 +1,12 @@
 -- =============================================================
 --  autopilot/pid.lua
---  通用 PID 控制器（支持独立三轴 / 单轴实例化）
+  -- PID  /
 -- =============================================================
 
 local PID = {}
 PID.__index = PID
 
----创建一个新的 PID 实例
+  -- - PID
 ---@param cfg table  { kp, ki, kd, integral_max, output_max }
 function PID.new(cfg)
     return setmetatable({
@@ -21,30 +21,30 @@ function PID.new(cfg)
     }, PID)
 end
 
----重置积分与微分状态
+  -- -
 function PID:reset()
     self._integral    = 0.0
     self._last_error  = 0.0
     self._initialized = false
 end
 
----计算 PID 输出
----@param setpoint number  目标值
----@param measured  number  当前测量值
----@param dt        number  时间步长 (秒)
----@return number output   控制量
+  -- - PID
+  -- -@param setpoint number
+  -- -@param measured  number
+  -- -@param dt        number   ()
+  -- -@return number output
 function PID:compute(setpoint, measured, dt)
     if dt <= 0 then return 0 end
 
     local error = setpoint - measured
 
-    -- 积分项（梯形积分，防积分饱和）
+
     self._integral = self._integral + error * dt
-    -- 积分限幅
+
     self._integral = math.max(-self.integral_max,
                      math.min( self.integral_max, self._integral))
 
-    -- 微分项（后向差分；首次调用无微分冲击）
+
     local derivative = 0.0
     if self._initialized then
         derivative = (error - self._last_error) / dt
@@ -56,12 +56,12 @@ function PID:compute(setpoint, measured, dt)
                  + self.ki * self._integral
                  + self.kd * derivative
 
-    -- 输出限幅
+
     output = math.max(-self.output_max, math.min(self.output_max, output))
     return output
 end
 
----动态修改增益（用于在线调参）
+  -- -
 function PID:tune(kp, ki, kd)
     self.kp = kp
     self.ki = ki
@@ -70,7 +70,7 @@ function PID:tune(kp, ki, kd)
 end
 
 -- =============================================================
---  三轴 PID 包装器（X、Y、Z 各自独立）
+  -- PID XYZ
 -- =============================================================
 local PID3 = {}
 PID3.__index = PID3
@@ -83,11 +83,11 @@ function PID3.new(cfg_h, cfg_v)
     }, PID3)
 end
 
----三轴同时计算
----@param target  table { x, y, z }  目标位置
----@param current table { x, y, z }  当前位置
+  -- -
+  -- -@param target  table { x, y, z }
+  -- -@param current table { x, y, z }
 ---@param dt      number
----@return table { x, y, z }  三轴控制量
+  -- -@return table { x, y, z }
 function PID3:compute(target, current, dt)
     return {
         x = self.x:compute(target.x, current.x, dt),

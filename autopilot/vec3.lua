@@ -1,6 +1,6 @@
 -- =============================================================
 --  autopilot/vec3.lua
---  轻量三维向量库
+
 -- =============================================================
 
 local Vec3 = {}
@@ -43,30 +43,30 @@ function Vec3:cross(b)
     )
 end
 
--- 水平距离（忽略 Y）
+  -- Y
 function Vec3:horzDist(b)
     local dx = self.x - b.x
     local dz = self.z - b.z
     return math.sqrt(dx*dx + dz*dz)
 end
 
--- 水平方向角（相对 -Z 轴，顺时针为正，与 MC Yaw 一致）
+  -- -Z  MC Yaw
 function Vec3:yawTo(b)
     local dx = b.x - self.x
     local dz = b.z - self.z
-    -- math.atan2(x, -z) → MC yaw (0=南/-Z, 90=西/-X, ±180=北/+Z, -90=东/+X)
+  -- math.atan2(x, -z)  MC yaw (0=/-Z, 90=/-X, 180=/+Z, -90=/+X)
     local yaw = math.deg(math.atan(dx, -dz))
     return yaw
 end
 
--- 规范化角度到 [-180, 180]
+  -- [-180, 180]
 function Vec3.normalizeAngle(a)
     a = a % 360
     if a > 180 then a = a - 360 end
     return a
 end
 
--- 线性插值
+
 function Vec3.lerp(a, b, t)
     return Vec3.new(
         a.x + (b.x - a.x) * t,
