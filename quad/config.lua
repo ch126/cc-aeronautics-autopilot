@@ -115,10 +115,12 @@ C.ALT_I_GAIN     = 0.01  -- altitude integrator gain
 C.ALT_I_MAX      = 15    -- altitude integrator clamp (RPM)
 
 -- ── 水平位置级联参数 ────────────────────────────────────────────
-C.POS_GAIN       = 0.5   -- pos_err -> target_vel (m/s per block)
+C.POS_GAIN       = 0.5   -- pos_err(blocks) -> target_vel (m/s)
+C.POS_I_GAIN     = 0.02  -- 位置积分增益（消除稳态偏差）
+C.POS_I_MAX      = 0.8   -- 位置积分限幅 (m/s，等效)
 C.POS_MAX_VEL    = 2.0   -- max target velocity (m/s)
 C.POS_DEADBAND   = 0.3   -- 位置死区 (blocks)，0.3 = 约 0.3m
-C.VEL_GAIN       = 3.0   -- vel_err -> tilt angle (deg per m/s)
+C.VEL_GAIN       = 3.0   -- vel_err (m/s) -> tilt angle (deg)
 C.ATT_MAX        = 15.0  -- max target pitch/roll (deg)
 C.SP_SMOOTH      = 0.08  -- 悬停模式设定值平滑（goto模式自动用0.25）
 

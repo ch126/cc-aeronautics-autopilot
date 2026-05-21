@@ -129,7 +129,7 @@ end
 local function gpsLoop()
     while running do
         imu:readGPS()
-        os.sleep(1.0)
+        os.sleep(0.2)   -- 5Hz GPS 更新，gps.locate(0.1) 本身占 0.1s
     end
 end
 
@@ -215,9 +215,9 @@ local function handle_cmd(line)
             imu.nav_lateral or 0), "INFO")
         if ctrl.dbg then
             local d = ctrl.dbg
-            gui:log(string.format("tvx=%.3f tvz=%.3f dvx_b=%.3f dvz_b=%.3f rp=%.2f rr=%.2f",
-                d.tvx or 0, d.tvz or 0, d.dvx_b or 0, d.dvz_b or 0,
-                d.rp or 0, d.rr or 0), "INFO")
+            gui:log(string.format("err(%.2f,%.2f) tv(%.2f,%.2f) rp=%.1f rr=%.1f i(%.2f,%.2f)",
+                d.ex or 0, d.ez or 0, d.tvx or 0, d.tvz or 0,
+                d.rp or 0, d.rr or 0, d.ix or 0, d.iz or 0), "INFO")
         end
     elseif cmd == "motors" then
         local r = mixer.rpm or {0,0,0,0}

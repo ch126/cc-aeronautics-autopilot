@@ -91,60 +91,75 @@ function Ctrl:updateOuter(imu_state, dt)
     local base_thr = clamp(C.RPM_HOVER + thr_delta + self._alt_i, C.RPM_MIN, C.RPM_MAX)
     self.throttle_out = clamp(base_thr / tilt_factor, C.RPM_MIN, C.RPM_MAX)
 
-    -- ── 水平速度阻尼 ──────────────────────────────────────────
+    -- ── 水平位置保持 ──────────────────────────────────────────
     local vx = imu_state.vx or 0
     local vz = imu_state.vz or 0
     local cy = math.cos(math.rad(imu_state.yaw or 0))
     local sy = math.sin(math.rad(imu_state.yaw or 0))
 
-    local target_vx, target_vz = 0, 0
+    local raw_pitch, raw_roll = 0, 0
 
     if self.target_x and imu_state.x then
         local ex = self.target_x - imu_state.x
         local ez = self.target_z - imu_state.z
         local dist = math.sqrt(ex*ex + ez*ez)
-        if dist > C.POS_DEADBAND then
-            target_vx = clamp(ex * C.POS_GAIN, -C.POS_MAX_VEL, C.POS_MAX_VEL)
-            target_vz = clamp(ez * C.POS_GAIN, -C.POS_MAX_VEL, C.POS_MAX_VEL)
+
+        -- 位置积分器：消除稳态偏差（风/推力偏差）
+        -- 只在 GPS 有效且误差较小时积分，避免积分饱和
+        if imu_state.gps_ok and dist < 5.0 then
+            self._pos_ix = (self._pos_ix or 0) + ex * C.POS_I_GAIN * dt
+            self._pos_iz = (self._pos_iz or 0) + ez * C.POS_I_GAIN * dt
+            self._pos_ix = clamp(self._pos_ix, -C.POS_I_MAX, C.POS_I_MAX)
+            self._pos_iz = clamp(self._pos_iz, -C.POS_I_MAX, C.POS_I_MAX)
         end
+
+        -- 位置 → 目标速度（P）+ 积分（I）
+        local target_vx = clamp(ex * C.POS_GAIN + (self._pos_ix or 0), -C.POS_MAX_VEL, C.POS_MAX_VEL)
+        local target_vz = clamp(ez * C.POS_GAIN + (self._pos_iz or 0), -C.POS_MAX_VEL, C.POS_MAX_VEL)
+
+        -- 速度误差（世界系→机体系）
+        local dvx   = target_vx - vx
+        local dvz   = target_vz - vz
+        local dvx_b =  cy * dvx + sy * dvz
+        local dvz_b = -sy * dvx + cy * dvz
+
+        raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+        raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+
+        -- 诊断
+        self.dbg = {
+            ex=ex, ez=ez, dist=dist,
+            tvx=target_vx, tvz=target_vz,
+            dvx_b=dvx_b, dvz_b=dvz_b,
+            rp=raw_pitch, rr=raw_roll,
+            ix=self._pos_ix or 0, iz=self._pos_iz or 0,
+        }
+    else
+        -- 无位置目标：纯速度阻尼
+        self._pos_ix = 0
+        self._pos_iz = 0
+        local dvx_b =  cy * (0 - vx) + sy * (0 - vz)
+        local dvz_b = -sy * (0 - vx) + cy * (0 - vz)
+        local VEL_DB = 0.25
+        if math.abs(vx) < VEL_DB and math.abs(vz) < VEL_DB then
+            dvx_b, dvz_b = 0, 0
+        end
+        raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+        raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+        self.dbg = nil
     end
 
-    -- 速度误差（世界系）→ 机体系 → 期望倾斜角
-    local dvx   = target_vx - vx
-    local dvz   = target_vz - vz
-    local dvx_b =  cy * dvx + sy * dvz
-    local dvz_b = -sy * dvx + cy * dvz
-
-    -- 速度死区：仅在纯悬停（无位置目标）且速度极小时才置零
-    local VEL_DB = 0.25
     local has_pos_target = (self.target_x ~= nil)
-    if not has_pos_target and math.abs(vx) < VEL_DB and math.abs(vz) < VEL_DB then
-        dvx_b, dvz_b = 0, 0
-    end
 
-    local raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-    local raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-
-    -- 诊断信息（供 pos 命令读取）
-    self.dbg = {
-        x=imu_state.x, z=imu_state.z,
-        tx=self.target_x, tz=self.target_z,
-        tvx=target_vx, tvz=target_vz,
-        dvx_b=dvx_b, dvz_b=dvz_b,
-        rp=raw_pitch, rr=raw_roll,
-    }
-
-    -- ── 设定值平滑（一阶低通，防止阶跃输入）─────────────────
-    -- goto模式用更快的alpha，让飞机及时响应位置指令
-    local SP_ALPHA = has_pos_target and 0.25 or (C.SP_SMOOTH or 0.08)
+    -- ── 设定值平滑（一阶低通）────────────────────────────────
+    local SP_ALPHA = has_pos_target and 0.3 or (C.SP_SMOOTH or 0.08)
     self.target_pitch = self.target_pitch + SP_ALPHA * (raw_pitch - self.target_pitch)
     self.target_roll  = self.target_roll  + SP_ALPHA * (raw_roll  - self.target_roll)
 
-    -- ── 设定值衰减：仅悬停模式下防传感器漂移，goto模式不衰减 ──
+    -- 无位置目标时缓慢衰减防漂移
     if not has_pos_target then
-        local DECAY = 0.05
-        self.target_pitch = self.target_pitch * (1.0 - DECAY)
-        self.target_roll  = self.target_roll  * (1.0 - DECAY)
+        self.target_pitch = self.target_pitch * 0.95
+        self.target_roll  = self.target_roll  * 0.95
     end
 end
 
@@ -177,6 +192,8 @@ function Ctrl:arm(alt, yaw)
     self.target_roll  = 0
     self.throttle_out = C.RPM_HOVER
     self._alt_i       = 0
+    self._pos_ix      = 0
+    self._pos_iz      = 0
     -- reset all integrators
     for _, p in ipairs({
         self.att_p,  self.att_q,  self.att_r,
@@ -188,6 +205,8 @@ function Ctrl:disarm()
     self.throttle_out = 0
     self.target_x     = nil
     self.target_z     = nil
+    self._pos_ix      = 0
+    self._pos_iz      = 0
 end
 
 function Ctrl:hover(imu_state)
@@ -197,14 +216,18 @@ function Ctrl:hover(imu_state)
         self.target_alt = imu_state.altitude or self.target_alt
         self.target_yaw = imu_state.yaw      or self.target_yaw
     end
-    -- 如果导航台已启用位置保持，锁定当前位置为新目标（而不是清除）
-    -- 否则清除 goto 目标，回到纯速度阻尼模式
+    -- 锁定当前位置为目标（位置保持已激活时）
+    -- 切换目标时重置积分器防止积分饱和
     if self.target_x ~= nil and imu_state and imu_state.x ~= nil then
         self.target_x = imu_state.x
         self.target_z = imu_state.z or self.target_z
+        self._pos_ix  = 0
+        self._pos_iz  = 0
     else
         self.target_x = nil
         self.target_z = nil
+        self._pos_ix  = 0
+        self._pos_iz  = 0
     end
 end
 
