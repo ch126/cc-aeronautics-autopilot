@@ -256,6 +256,9 @@ function Ctrl:updateOuter(imu_state, dt)
 
     local has_pos_target = (self.target_x ~= nil)
 
+    -- 手动模式：跳过位置控制，target_pitch/roll 由 applyManual 直接写入
+    if self.manual_mode then return end
+
     -- ── 设定值平滑（一阶低通）────────────────────────────────
     local SP_ALPHA = has_pos_target and 0.3 or (C.SP_SMOOTH or 0.08)
     self.target_pitch = self.target_pitch + SP_ALPHA * (raw_pitch - self.target_pitch)
