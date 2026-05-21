@@ -89,6 +89,11 @@ C.NAV_BEACON_X   = nil   -- 信标相对起飞点的 X 坐标 (blocks)
 C.NAV_BEACON_Z   = nil   -- 信标相对起飞点的 Z 坐标 (blocks)
 C.NAV_POS_ALPHA  = 0.3   -- 导航台位置收敛速度（0.3 = 快速跟踪，纯导航台模式用大值）
 
+-- navfollow 方向修正：
+--   false（默认）= 直接朝导航台指向飞
+--   true         = 反转180°（导航台返回的是"回家"方向时使用）
+C.NAV_FOLLOW_INVERT = true
+
 -- ── 飞行参数 ───────────────────────────────────────────────────
 C.MAX_TILT       = 25.0  -- max tilt angle (deg)
 C.MAX_CLIMB      = 4.0   -- max climb rate (m/s)

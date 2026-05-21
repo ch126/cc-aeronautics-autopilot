@@ -106,6 +106,7 @@ function Ctrl:updateOuter(imu_state, dt)
         local rel_rad     = math.rad(imu_state.nav_rel)
         local yaw_rad     = math.rad(imu_state.yaw or 0)
         local world_bear  = yaw_rad + rel_rad
+        if C.NAV_FOLLOW_INVERT then world_bear = world_bear + math.pi end
         local spd         = self.nav_follow_speed
         local target_vx   = spd * math.sin(world_bear)
         local target_vz   = spd * math.cos(world_bear)
