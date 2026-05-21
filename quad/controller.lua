@@ -99,7 +99,31 @@ function Ctrl:updateOuter(imu_state, dt)
 
     local raw_pitch, raw_roll = 0, 0
 
-    if self.target_x and imu_state.x then
+    -- ── Nav Follow 模式：跟着导航台方向飞 ─────────────────────
+    -- nav_follow_speed 不为 nil 时，忽略 target_x/z，
+    -- 按导航台指向以固定速度飞行（yaw=0 为参考方向，rel 为机头相对偏角）
+    if self.nav_follow_speed and imu_state.nav_rel ~= nil then
+        local rel_rad     = math.rad(imu_state.nav_rel)
+        local yaw_rad     = math.rad(imu_state.yaw or 0)
+        local world_bear  = yaw_rad + rel_rad
+        local spd         = self.nav_follow_speed
+        local target_vx   = spd * math.sin(world_bear)
+        local target_vz   = spd * math.cos(world_bear)
+        local dvx   = target_vx - vx
+        local dvz   = target_vz - vz
+        local dvx_b =  cy * dvx + sy * dvz
+        local dvz_b = -sy * dvx + cy * dvz
+        raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+        raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+        self.dbg = {
+            ex=0, ez=0, dist=0,
+            tvx=target_vx, tvz=target_vz,
+            dvx_b=dvx_b, dvz_b=dvz_b,
+            rp=raw_pitch, rr=raw_roll,
+            ix=0, iz=0,
+            nav_rel=imu_state.nav_rel,
+        }
+    elseif self.target_x and imu_state.x then
         local ex = self.target_x - imu_state.x
         local ez = self.target_z - imu_state.z
         local dist = math.sqrt(ex*ex + ez*ez)
@@ -210,6 +234,7 @@ function Ctrl:arm(alt, yaw)
     self._pos_iz      = 0
     self._goto_active = false
     self.arrived      = false
+    self.nav_follow_speed = nil
     -- reset all integrators
     for _, p in ipairs({
         self.att_p,  self.att_q,  self.att_r,
@@ -223,11 +248,13 @@ function Ctrl:disarm()
     self.target_z     = nil
     self._pos_ix      = 0
     self._pos_iz      = 0
+    self.nav_follow_speed = nil
 end
 
 function Ctrl:hover(imu_state)
-    self.target_pitch = 0
-    self.target_roll  = 0
+    self.target_pitch     = 0
+    self.target_roll      = 0
+    self.nav_follow_speed = nil   -- 停止 nav follow
     if imu_state then
         self.target_alt = imu_state.altitude or self.target_alt
         self.target_yaw = imu_state.yaw      or self.target_yaw

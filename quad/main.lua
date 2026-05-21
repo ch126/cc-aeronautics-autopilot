@@ -147,7 +147,7 @@ local function handle_cmd(line)
     local cmd = parts[1] or ""
 
     if cmd == "help" then
-        gui:log("arm disarm hover goto alt yaw land pos motors quit", "INFO")
+        gui:log("arm disarm hover goto navfollow alt yaw land pos motors quit", "INFO")
     elseif cmd == "arm" then
         local h = tonumber(parts[2]) or 5
         gui:log("Calibrating sensors...", "INFO")
@@ -277,6 +277,21 @@ local function handle_cmd(line)
         else
             gui:log("GPS FAIL: returned nil", "WARN")
             gui:log("需要在世界中放置 >=3 个 GPS 主机电脑并运行 gps host", "WARN")
+        end
+    elseif cmd == "navfollow" then
+        -- navfollow [speed]  — 以固定速度跟着导航台指向的目标飞
+        -- 用 hover 或 poshold 停止
+        if not ctrl.armed then
+            gui:log("Arm first", "WARN")
+        elseif not imu.nav_p then
+            gui:log("No navigation_table peripheral found", "WARN")
+        else
+            local spd = tonumber(parts[2]) or 1.5
+            spd = math.max(0.2, math.min(spd, C.POS_MAX_VEL))
+            ctrl.nav_follow_speed = spd
+            ctrl.target_x = nil   -- 关闭位置定点，避免冲突
+            ctrl.target_z = nil
+            gui:log(string.format("Nav follow ON, speed=%.1f m/s  (hover to stop)", spd), "OK")
         end
     elseif cmd == "land" then
         gui:log("Landing...", "WARN")

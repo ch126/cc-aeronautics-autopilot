@@ -206,55 +206,49 @@ function IMU:read(dt)
     end
 
     -- ── 导航台 Yaw + 位置估计 ───────────────────────────────────
-    if self.nav_p and C.NAV_BEACON_BEARING then
+    if self.nav_p then
         local ok, rel = pcall(function() return self.nav_p.getRelativeAngle() end)
         if ok and type(rel) == "number" then
-            -- ① Yaw 修正
-            local nav_yaw = (C.NAV_BEACON_BEARING - rel) % 360
-            local yaw_alpha = C.NAV_YAW_ALPHA or 0.98
-            local diff = (nav_yaw - self.yaw) % 360
-            if diff > 180 then diff = diff - 360 end
-            self.yaw = (self.yaw + (1.0 - yaw_alpha) * diff) % 360
+            self.nav_rel = rel   -- 始终暴露原始相对角度（供 nav follow 使用）
 
-            -- ② 位置估计：从方位角直接计算横向绝对位移
-            -- 原理：若飞机在起飞原点(0,0)，看到信标的方位角应为 hold_bearing
-            -- 实际测量到 measured_bearing，差值对应横向漂移量
-            if C.NAV_BEACON_X ~= nil and C.NAV_BEACON_Z ~= nil then
-                -- 从原点到信标的已知距离和方向
-                local bx = C.NAV_BEACON_X
-                local bz = C.NAV_BEACON_Z
-                local dist_origin = math.sqrt(bx * bx + bz * bz)
+            if C.NAV_BEACON_BEARING then
+                -- ① Yaw 修正
+                local nav_yaw = (C.NAV_BEACON_BEARING - rel) % 360
+                local yaw_alpha = C.NAV_YAW_ALPHA or 0.98
+                local diff = (nav_yaw - self.yaw) % 360
+                if diff > 180 then diff = diff - 360 end
+                self.yaw = (self.yaw + (1.0 - yaw_alpha) * diff) % 360
 
-                if dist_origin > 1.0 then
-                    -- 从原点看信标的期望方位角（固定值）
-                    local hold_bearing_rad = math.atan(bx, bz)
-                    -- 当前测量到的信标方位角
-                    local measured_bearing_rad = math.rad((self.yaw + rel) % 360)
+                -- ② 位置估计：从方位角直接计算横向绝对位移
+                if C.NAV_BEACON_X ~= nil and C.NAV_BEACON_Z ~= nil then
+                    local bx = C.NAV_BEACON_X
+                    local bz = C.NAV_BEACON_Z
+                    local dist_origin = math.sqrt(bx * bx + bz * bz)
 
-                    -- 方位角误差
-                    local bearing_err = measured_bearing_rad - hold_bearing_rad
-                    while bearing_err >  math.pi do bearing_err = bearing_err - 2*math.pi end
-                    while bearing_err < -math.pi do bearing_err = bearing_err + 2*math.pi end
+                    if dist_origin > 1.0 then
+                        local hold_bearing_rad = math.atan(bx, bz)
+                        local measured_bearing_rad = math.rad((self.yaw + rel) % 360)
 
-                    -- 横向位移 = dist_origin × sin(方位角误差)
-                    -- 正值 = 向右漂移（顺时针偏，beacon 偏左）
-                    local lateral = dist_origin * math.sin(bearing_err)
+                        local bearing_err = measured_bearing_rad - hold_bearing_rad
+                        while bearing_err >  math.pi do bearing_err = bearing_err - 2*math.pi end
+                        while bearing_err < -math.pi do bearing_err = bearing_err + 2*math.pi end
 
-                    -- 横向方向单位向量（垂直于 hold_bearing，指向右）
-                    local perp_x =  math.cos(hold_bearing_rad)
-                    local perp_z = -math.sin(hold_bearing_rad)
+                        local lateral = dist_origin * math.sin(bearing_err)
+                        local perp_x =  math.cos(hold_bearing_rad)
+                        local perp_z = -math.sin(hold_bearing_rad)
 
-                    -- 导航台直接给出横向位置：用较大 alpha 快速收敛
-                    local nav_x = lateral * perp_x
-                    local nav_z = lateral * perp_z
-                    local pa = C.NAV_POS_ALPHA or 0.3
-                    self.x = self.x + pa * (nav_x - self.x)
-                    self.z = self.z + pa * (nav_z - self.z)
+                        local nav_x = lateral * perp_x
+                        local nav_z = lateral * perp_z
+                        local pa = C.NAV_POS_ALPHA or 0.3
+                        self.x = self.x + pa * (nav_x - self.x)
+                        self.z = self.z + pa * (nav_z - self.z)
 
-                    -- 暴露给 controller 的原始横向误差（blocks）
-                    self.nav_lateral = lateral
+                        self.nav_lateral = lateral
+                    end
                 end
-            end
+            end  -- if C.NAV_BEACON_BEARING
+        else
+            self.nav_rel = nil
         end
     end
 
