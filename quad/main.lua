@@ -271,11 +271,17 @@ local function handle_cmd(line)
             gui:log("navfollow phase: " .. ctrl.dbg_phase, "INFO")
         end
     elseif cmd == "manual" then
-        -- 每次执行时重新查找手柄（防止启动时未连接）
+        -- 每次执行时重新查找手柄
         gamepad = peripheral.find("tweaked_controller")
         if gamepad then gamepad.setFullPrecision(true) end
+        -- 诊断输出
+        gui:log("gamepad=" .. tostring(gamepad), "INFO")
+        gui:log("armed=" .. tostring(ctrl.armed) .. " _manual_enabled=" .. tostring(_manual_enabled), "INFO")
         if not gamepad then
-            gui:log("No tweaked_controller found! Check connection.", "ERR")
+            gui:log("No tweaked_controller! Scanning all peripherals...", "ERR")
+            for _, n in ipairs(peripheral.getNames()) do
+                gui:log("  " .. n .. " -> " .. peripheral.getType(n), "INFO")
+            end
         elseif not ctrl.armed then
             gui:log("Arm first before enabling manual mode.", "WARN")
         else
