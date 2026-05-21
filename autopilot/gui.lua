@@ -186,8 +186,9 @@ function GUI.new()
 
         log_lines  = {},
         log_max    = 4,
-  -- diff
         _last_state = nil,
+        -- set true while a modal dialog is open; nav_loop skips render
+        modal      = false,
     }, GUI)
 
 
@@ -512,67 +513,119 @@ end
 -- fields: { {label="X:", default="0"}, ... }
   -- : { field1_value, field2_value, ... }  nil
 function GUI:dialog(title, fields)
-    local t = self.term
-    local W = self.W
-    local dw = math.min(W - 4, 44)
-    local dh = #fields * 2 + 4
+    -- Block nav_loop from re-rendering while dialog is open
+    self.modal = true
+
+    local t  = self.term
+    local W  = self.W
+    local dw = math.min(W - 4, 40)
+    local dh = #fields * 3 + 4
     local dx = math.floor((W - dw) / 2) + 1
-    local dy = math.floor((self.H - dh) / 2) + 1
+    local dy = math.max(2, math.floor((self.H - dh) / 2))
 
+    -- Create an overlaid window so underlying screen is preserved on close
+    local win = window.create(t, dx, dy, dw, dh, true)
 
-    local saved = {}
-    for y = dy, dy+dh-1 do
-        for x = dx, dx+dw-1 do
-  -- CC:Tweaked
+    local function draw_dialog(focused_field, buf_map)
+        win.setBackgroundColor(colors.blue)
+        win.clear()
+        -- border
+        win.setCursorPos(1, 1)
+        win.setTextColor(colors.cyan)
+        win.setBackgroundColor(colors.blue)
+        win.write("+" .. string.rep("-", dw-2) .. "+")
+        for row = 2, dh-1 do
+            win.setCursorPos(1, row)
+            win.write("|" .. string.rep(" ", dw-2) .. "|")
         end
+        win.setCursorPos(1, dh)
+        win.write("+" .. string.rep("-", dw-2) .. "+")
+        -- title
+        local tstr = " " .. title .. " "
+        local tx = math.floor((dw - #tstr) / 2) + 1
+        win.setCursorPos(tx, 1)
+        win.setTextColor(colors.white)
+        win.write(tstr)
+        -- hint
+        local hint = "[Enter]=OK  [Esc]=Cancel"
+        win.setCursorPos(math.floor((dw - #hint) / 2) + 1, dh)
+        win.setTextColor(colors.yellow)
+        win.setBackgroundColor(colors.blue)
+        win.write(hint)
+        -- fields
+        for i, field in ipairs(fields) do
+            local fy = 2 + (i-1)*3
+            -- label
+            win.setCursorPos(2, fy)
+            win.setTextColor(colors.white)
+            win.setBackgroundColor(colors.blue)
+            win.write(field.label)
+            -- input box
+            local inp_x = 2
+            local inp_w = dw - 3
+            local is_focused = (i == focused_field)
+            win.setCursorPos(inp_x, fy+1)
+            win.setBackgroundColor(is_focused and colors.lightGray or colors.gray)
+            win.setTextColor(colors.black)
+            local buf = buf_map[i] or ""
+            local show = buf
+            if #show > inp_w - 2 then show = show:sub(#show - inp_w + 3) end
+            local pad = inp_w - #show - 1
+            win.write(" " .. show .. (is_focused and "_" or " ") .. string.rep(" ", math.max(0, pad)))
+        end
+        -- move CC cursor to current input pos (prevents cursor blinking elsewhere)
+        local cur_fy = 2 + (focused_field-1)*3
+        local buf = buf_map[focused_field] or ""
+        local show = buf
+        local inp_w = dw - 3
+        if #show > inp_w - 2 then show = show:sub(#show - inp_w + 3) end
+        win.setCursorPos(1 + #show + 1, cur_fy+1)
+        win.setBackgroundColor(colors.lightGray)
+        win.setTextColor(colors.black)
     end
 
-
-    fill_rect(t, dx, dy, dw, dh, colors.navy or colors.blue)
-    draw_box(t, dx, dy, dw, dh, title, colors.cyan, colors.white)
-
-    local results = {}
+    local focused = 1
+    local bufs = {}
     for i, field in ipairs(fields) do
-        local fy = dy + 1 + (i-1)*2
-        write_at(t, dx+2, fy,   field.label, colors.white, colors.blue)
+        bufs[i] = field.default or ""
+    end
 
-        fill_rect(t, dx+2+#field.label+1, fy, dw-#field.label-4, 1, colors.lightGray)
+    draw_dialog(focused, bufs)
 
-        local buf = field.default or ""
-        local inp_x = dx + 2 + #field.label + 1
-        local inp_w = dw - #field.label - 5
-
-
-        while true do
-
-            fill_rect(t, inp_x, fy, inp_w, 1, colors.lightGray)
-            local show = buf
-            if #show > inp_w - 1 then show = show:sub(#show - inp_w + 2) end
-            write_at(t, inp_x, fy, show, colors.black, colors.lightGray)
-            write_at(t, inp_x + #show, fy, "_", colors.blue, colors.lightGray)
-            t.setCursorPos(inp_x + #show, fy)
-
-            local ev, p1 = os.pullEvent()
-            if ev == "char" then
-                buf = buf .. p1
-            elseif ev == "key" then
-                if p1 == keys.backspace and #buf > 0 then
-                    buf = buf:sub(1, -2)
-                elseif p1 == keys.enter then
-                    break
-                elseif p1 == keys.escape then
-
-                    self:drawFrame()
-                    return nil
+    local result = nil
+    while true do
+        local ev, p1 = os.pullEvent()
+        if ev == "char" then
+            bufs[focused] = bufs[focused] .. p1
+        elseif ev == "key" then
+            if p1 == keys.backspace then
+                if #bufs[focused] > 0 then
+                    bufs[focused] = bufs[focused]:sub(1, -2)
                 end
+            elseif p1 == keys.enter then
+                if focused < #fields then
+                    focused = focused + 1
+                else
+                    result = bufs
+                    break
+                end
+            elseif p1 == keys.tab then
+                focused = (focused % #fields) + 1
+            elseif p1 == keys.escape then
+                break  -- cancel
             end
         end
-        results[i] = buf
+        draw_dialog(focused, bufs)
     end
 
-
+    -- Hide overlay, then do a full repaint so nothing is left behind
+    win.setVisible(false)
+    self.modal = false
     self:drawFrame()
-    return results
+    self:drawLog()
+    self:drawInput()
+
+    return result
 end
 
 
