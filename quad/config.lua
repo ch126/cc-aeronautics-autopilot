@@ -68,6 +68,11 @@ C.SENSOR_VEL_X    = nil  -- velocity_sensor 朝 X 轴 -> getVelocity() 返回标
 C.SENSOR_VEL_Z    = nil  -- velocity_sensor 朝 Z 轴 -> getVelocity() 返回标量 m/s
 C.SENSOR_NAV      = nil  -- navigation_table -> getRelativeAngle() 导航台修正yaw
 C.SENSOR_GPS      = nil  -- gps_sensor 外设名（必须填写外设名如 "top"，nil=禁用GPS）
+-- CC gps.locate() 开关：
+--   false（默认）= 禁用，因为飞行器在 Sable SubLevel 上时 gps.locate()
+--                  返回的是结构本地坐标而非世界坐标，会导致位置控制错乱
+--   true         = 仅在电脑直接放在地面（非 SubLevel）时才能正确使用
+C.USE_GPS_LOCATE  = false
 
 -- ── 导航台 Heading 修正 ────────────────────────────────────────
 -- 将罗盘/磁铁放在地面，飞机上装导航台

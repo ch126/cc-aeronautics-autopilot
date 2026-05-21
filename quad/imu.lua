@@ -285,6 +285,12 @@ end
 
 -- 单独调用，放在慢速循环（1~2Hz），避免阻塞控制环
 function IMU:readGPS()
+    -- SubLevel 上的 CC 电脑用 gps.locate() 会得到结构本地坐标，
+    -- 不是世界坐标——除非 config 明确允许才启用
+    if not C.USE_GPS_LOCATE then
+        self.gps_ok = false
+        return
+    end
     -- 用 CC 原生 GPS 定位（需要地图上有 GPS 主机方块 + 本机有无线 modem）
     -- gps.locate() 内部会广播请求，等待至少3个主机响应
     local wx, wy, wz = gps.locate(0.5)

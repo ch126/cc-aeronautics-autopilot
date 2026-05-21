@@ -242,6 +242,8 @@ local function handle_cmd(line)
     elseif cmd == "gpstest" then
         -- 诊断 GPS 定位问题：列出 modem 并执行较长超时的 gps.locate()
         gui:log("=== GPS DIAG ===", "INFO")
+        gui:log("注意: SubLevel上gps.locate()返回本地坐标非世界坐标", "WARN")
+        gui:log("USE_GPS_LOCATE=" .. tostring(C.USE_GPS_LOCATE), "INFO")
         -- 列出所有 modem
         local found_wireless = false
         peripheral.find("modem", function(name, m)
