@@ -3,19 +3,19 @@
   -- TUI
 --
   -- 5119 Advanced Computer
---  ┌─────────────────────────────────────────────────────┐
+--  
   -- row 1
---  ├──────────────────────┬──────────────────────────────┤
+--  
   -- ()       ()               row 2-13
---  ├──────────────────────┴──────────────────────────────┤
+--  
   -- row 14
---  ├──────────────────────────────────────────────────────┤
+--  
   -- [GO][WP+][CLR][START][STOP][TUNE][?]           row 15-16
---  ├──────────────────────────────────────────────────────┤
+--  
   -- row 17
---  ├──────────────────────────────────────────────────────┤
+--  
   -- 2                                      row 18-19
---  └──────────────────────────────────────────────────────┘
+--  
 -- =============================================================
 
 local GUI = {}
@@ -267,12 +267,12 @@ function GUI:drawButtons(highlighted)
         write_at(t, btn.x, y,   btn.label, fg, bg)
   -- /
         local icon = ""
-        if btn.action == "goto"    then icon = "  ►    "
-        elseif btn.action == "wp_add"  then icon = "  ⊕    "
-        elseif btn.action == "wp_clear"then icon = "  ✕    "
-        elseif btn.action == "wp_list" then icon = "  ≡    "
-        elseif btn.action == "start"   then icon = "  ▶    "
-        elseif btn.action == "stop"    then icon = "  ■    "
+        if btn.action == "goto"    then icon = "  >>   "
+        elseif btn.action == "wp_add"  then icon = "  (+)  "
+        elseif btn.action == "wp_clear"then icon = "  (x)  "
+        elseif btn.action == "wp_list" then icon = "  ===  "
+        elseif btn.action == "start"   then icon = "  >>   "
+        elseif btn.action == "stop"    then icon = "  [ ]  "
         elseif btn.action == "help"    then icon = "  ?    "
         end
         icon = icon:sub(1, btn.w)
@@ -385,8 +385,8 @@ function GUI:drawProgress(s)
     draw_progress(t, 2, self.ROW_PROG, W-2, pct, label,
         colors.white, TH.progress_fg)
 
-    write_at(t, 1, self.ROW_PROG, "│", TH.panel_border, TH.bg)
-    write_at(t, W, self.ROW_PROG, "│", TH.panel_border, TH.bg)
+    write_at(t, 1, self.ROW_PROG, "|", TH.panel_border, TH.bg)
+    write_at(t, W, self.ROW_PROG, "|", TH.panel_border, TH.bg)
 end
 
 
@@ -452,7 +452,7 @@ function GUI:drawInput()
 
     local cx = px + #show
     if cx <= W then
-        write_at(t, cx, self.ROW_INPUT, "▌", TH.input_cursor, TH.input_bg)
+        write_at(t, cx, self.ROW_INPUT, "_", TH.input_cursor, TH.input_bg)
     end
 
     t.setCursorPos(cx, self.ROW_INPUT)
@@ -485,7 +485,7 @@ function GUI:drawLog()
         if row <= self.H then
             fill_rect(t, 1, row, W, 1, TH.log_bg)
             local text = entry.text
-            if #text > W then text = text:sub(1, W-1) .. "…" end
+            if #text > W then text = text:sub(1, W-1) .. "..." end
             write_at(t, 1, row, text, entry.fg, TH.log_bg)
         end
     end
@@ -549,7 +549,7 @@ function GUI:dialog(title, fields)
             local show = buf
             if #show > inp_w - 1 then show = show:sub(#show - inp_w + 2) end
             write_at(t, inp_x, fy, show, colors.black, colors.lightGray)
-            write_at(t, inp_x + #show, fy, "▌", colors.blue, colors.lightGray)
+            write_at(t, inp_x + #show, fy, "_", colors.blue, colors.lightGray)
             t.setCursorPos(inp_x + #show, fy)
 
             local ev, p1 = os.pullEvent()

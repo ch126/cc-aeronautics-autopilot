@@ -47,6 +47,25 @@ end
 
 
 local function handle(cmd_str)
+    local parts = {}
+    for w in cmd_str:gmatch("%S+") do table.insert(parts, w) end
+    if #parts == 0 then return end
+    local cmd = parts[1]:lower()
+
+    -- scan: list peripherals (works even without helm)
+    if cmd == "scan" then
+        local names = peripheral.getNames()
+        if #names == 0 then
+            gui:log("No peripherals found", "WARN")
+        else
+            for _, n in ipairs(names) do
+                local t = peripheral.getType(n)
+                gui:log(n .. " -> " .. tostring(t), "INFO")
+            end
+        end
+        return
+    end
+
     if not nav then gui:log("No helm connected, cmd ignored", "WARN"); return end
     local parts = {}
     for w in cmd_str:gmatch("%S+") do table.insert(parts, w) end
@@ -86,7 +105,11 @@ local function handle(cmd_str)
         else gui:log("Axis: h=horizontal  v=vertical","INFO") end
 
     elseif cmd == "help" then
-        gui:log("goto/wp add/wp clear/start/stop/tune h|v","INFO")
+        gui:log("Commands: scan goto wp start stop tune exit","INFO")
+        gui:log("  scan               - list all peripherals","INFO")
+        gui:log("  goto <x> <y> <z>   - fly to coord","INFO")
+        gui:log("  wp add/clear       - manage waypoints","INFO")
+        gui:log("  tune h|v <kp><ki><kd> - tune PID","INFO")
     elseif cmd == "exit" or cmd == "quit" then
         if nav then nav:stop() end
         gui:log("Exiting...","WARN"); os.sleep(0.3)

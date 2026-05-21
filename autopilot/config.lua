@@ -1,29 +1,39 @@
 -- =============================================================
 --  autopilot/config.lua
-  -- PID
-  -- CC:Tweaked + Create:Aeronautics  NeoForge 1.21.1
+--  Global config: peripheral names, PID gains, thresholds
+--  Target: CC:Tweaked + Create:Aeronautics  NeoForge 1.21.1
 -- =============================================================
 
 local Config = {}
 
+-- -- Peripheral ------------------------------------------------
+-- Create:Aeronautics Airship Helm peripheral type
+-- Run `peripheral.getNames()` in-game to find the exact name.
+-- Common values:
+--   "create_aeronautics:airship_helm"
+--   "create_aeronautics:tilt_airship_helm"
+--   "airshipHelm"
+-- Set to nil to auto-scan all attached peripherals.
+Config.HELM_TYPE = nil  -- nil = auto-detect
 
-  -- Create:Aeronautics Helm / Airship Controller
-Config.HELM_NAME          = "create_aeronautics:helm_0"
-  -- / Advanced Peripherals  mod
-Config.RADAR_NAME         = "peripheral_radar_0"
+-- If auto-detect finds multiple, it picks the first.
+-- Set to exact peripheral side/name to force a specific one, e.g. "right"
+Config.HELM_SIDE = nil  -- nil = auto-detect
 
-Config.HAS_RADAR          = false
+-- Radar peripheral (Advanced Peripherals). Set HAS_RADAR=false if not installed.
+Config.RADAR_NAME = "neuralInterface"
+Config.HAS_RADAR  = false
 
+-- -- Flight parameters -----------------------------------------
+Config.TICK_RATE          = 0.05   -- main loop interval (s), ~20 tps
+Config.ARRIVAL_RADIUS     = 2.0    -- arrival threshold (blocks)
+Config.MAX_SPEED          = 8.0    -- max speed cap (blocks/s)
+Config.MAX_VERTICAL_SPEED = 4.0    -- max vertical speed (blocks/s)
+Config.MAX_THROTTLE       = 1.0    -- throttle range [-1, 1]
+Config.YAW_SPEED          = 60.0   -- max yaw rate (deg/s)
+Config.HEADING_THRESHOLD  = 5.0    -- yaw error below this allows forward thrust (deg)
 
-Config.TICK_RATE          = 0.05  -- ()   20 tick/s
-Config.ARRIVAL_RADIUS     = 2.0  -- "" ()
-Config.MAX_SPEED          = 8.0  -- (/s)
-Config.MAX_VERTICAL_SPEED = 4.0  -- (/s)
-Config.MAX_THROTTLE       = 1.0  -- [-1, 1]
-Config.YAW_SPEED          = 60.0  -- (/s)
-Config.HEADING_THRESHOLD  = 5.0  -- ()
-
-  -- PID  X/Z
+-- -- PID gains (horizontal X/Z) --------------------------------
 Config.PID_H = {
     kp = 0.18,
     ki = 0.004,
@@ -32,7 +42,7 @@ Config.PID_H = {
     output_max   = 1.0,
 }
 
-  -- PID  Y
+-- -- PID gains (vertical Y) ------------------------------------
 Config.PID_V = {
     kp = 0.30,
     ki = 0.005,
@@ -41,7 +51,7 @@ Config.PID_V = {
     output_max   = 1.0,
 }
 
-  -- PID  Yaw
+-- -- PID gains (yaw) -------------------------------------------
 Config.PID_YAW = {
     kp = 0.8,
     ki = 0.01,
@@ -50,24 +60,22 @@ Config.PID_YAW = {
     output_max   = 1.0,
 }
 
-
+-- -- Obstacle avoidance ----------------------------------------
 Config.OBSTACLE = {
-    detect_range    = 16,  -- ()
-    repulse_range   = 6,  -- ()
-    repulse_gain    = 3.5,
-    attract_gain    = 1.0,
-    min_alt         = 5,
-    alt_step        = 4,  -- ()
-    scan_dirs = {  -- /////
+    detect_range  = 16,
+    repulse_range = 6,
+    repulse_gain  = 3.5,
+    attract_gain  = 1.0,
+    min_alt       = 5,
+    alt_step      = 4,
+    scan_dirs = {
         {1,0,0},{-1,0,0},{0,0,1},{0,0,-1},{0,1,0},{0,-1,0},
-
         {1,0,1},{-1,0,1},{1,0,-1},{-1,0,-1},
         {1,1,0},{-1,1,0},{0,1,1},{0,1,-1},
     },
 }
 
-
--- "DEBUG" | "INFO" | "WARN" | "ERROR"
-Config.LOG_LEVEL = "INFO"
+-- -- Log level -------------------------------------------------
+Config.LOG_LEVEL = "INFO"  -- DEBUG | INFO | WARN | ERROR
 
 return Config

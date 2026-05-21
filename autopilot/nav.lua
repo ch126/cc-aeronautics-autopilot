@@ -36,28 +36,107 @@ Nav.STATE = {
 }
 
 
-function Nav.new()
+-- Auto-detect the airship controller peripheral.
+-- Create:Aeronautics registers its helm block as a CC peripheral.
+-- The exact type name varies by version; we probe by checking for
+-- the methods the autopilot needs (getPosition / setSpeed / etc.)
+local function findHelm()
+    -- 1. If config specifies a side/name, try that first
+    if Config.HELM_SIDE then
+        local p = peripheral.wrap(Config.HELM_SIDE)
+        if p then return p, Config.HELM_SIDE end
+    end
 
-    local helm  = peripheral.find("create_aeronautics:helm")
-               or peripheral.find("airshipController")
+    -- 2. Try known type names via peripheral.find()
+    local knownTypes = {
+        "create_aeronautics:airship_helm",
+        "create_aeronautics:tilt_airship_helm",
+        "create_aeronautics:helm",
+        "airshipHelm",
+        "airship_helm",
+        "Aeronautics_AirshipHelm",
+    }
+    for _, t in ipairs(knownTypes) do
+        local p = peripheral.find(t)
+        if p then return p, t end
+    end
+
+    -- 3. Scan ALL attached peripherals and pick the first one that has
+    --    the methods we need (duck-typing).
+    local required = { "getPosition", "setSpeed" }
+    -- some versions use setThrottle instead
+    local required_alt = { "getPosition", "setThrottle" }
+    local required_alt2 = { "getPosition", "setSail" }
+    for _, name in ipairs(peripheral.getNames()) do
+        local p = peripheral.wrap(name)
+        if p then
+            local function hasAll(meths)
+                for _, m in ipairs(meths) do
+                    if type(p[m]) ~= "function" then return false end
+                end
+                return true
+            end
+            if hasAll(required) or hasAll(required_alt) or hasAll(required_alt2) then
+                return p, name
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+function Nav.new()
+    local helm, helmName = findHelm()
     local radar = Config.HAS_RADAR
-                  and peripheral.find("neuralInterface")
+                  and peripheral.find(Config.RADAR_NAME)
                   or nil
 
     if not helm then
-        error("[NAV] Helm peripheral not found!\n"
-            .."Please check:\n"
-            .."  1. Airship assembled & computer wired to Helm\n"
-            .."  2. HELM_NAME in config.lua is correct\n"
-            .."  3. NeoForge 1.21.1 + CC:Tweaked + Create:Aeronautics installed")
+        -- List available peripherals to help user debug
+        local names = peripheral.getNames()
+        local list = #names > 0 and table.concat(names, ", ") or "(none)"
+        error("[NAV] Airship controller peripheral not found!\n"
+            .."Available peripherals: " .. list .. "\n"
+            .."Steps to fix:\n"
+            .."  1. Assemble the airship (right-click the Helm block)\n"
+            .."  2. Place the computer ON the airship structure\n"
+            .."  3. Connect computer to Helm with a Wired Modem + cable\n"
+            .."     OR place computer directly adjacent to Helm\n"
+            .."  4. If still failing, set Config.HELM_SIDE to the\n"
+            .."     peripheral name shown above in config.lua")
     end
+
+    -- Detect which throttle API this helm version exposes
+    local helmAPI = {}
+    if type(helm.setSpeed) == "function" then
+        -- Create:Aeronautics newer API
+        helmAPI.setThrottle = function(f, u, r)
+            pcall(helm.setSpeed, f, u, r)
+        end
+    elseif type(helm.setThrottle) == "function" then
+        helmAPI.setThrottle = function(f, u, r)
+            pcall(helm.setThrottle, f, u, r)
+        end
+    elseif type(helm.setSail) == "function" then
+        helmAPI.setThrottle = function(f, u, r)
+            pcall(helm.setSail, f, u, r)
+        end
+    else
+        helmAPI.setThrottle = function() end  -- no-op fallback
+    end
+
+    helmAPI.getPosition = helm.getPosition
+    helmAPI.getVelocity = helm.getVelocity or function() return {x=0,y=0,z=0} end
+    helmAPI.getYaw      = helm.getYaw      or function() return 0 end
+    helmAPI.setYawTarget= helm.setYawTarget or function() end
+    helmAPI._name       = helmName
 
     local pid3 = PIDMod.PID3.new(Config.PID_H, Config.PID_V)
     local pidY = PIDMod.PID.new(Config.PID_YAW)
     local obs  = Obstacle.new(radar)
 
     return setmetatable({
-        helm       = helm,
+        helm       = helmAPI,
         pid3       = pid3,
         pid_yaw    = pidY,
         obstacle   = obs,
@@ -216,9 +295,7 @@ function Nav:_controlStep(vtarget, real_target, dt, dist)
   -- yaw_out > 0  < 0
 
   -- Create:Aeronautics setYaw
-    pcall(function()
-        self.helm.setYawTarget(desired_yaw)
-    end)
+    pcall(self.helm.setYawTarget, desired_yaw)
 
 
     local abs_yaw_err = math.abs(yaw_err)
@@ -251,21 +328,13 @@ function Nav:_controlStep(vtarget, real_target, dt, dist)
     end
 
 
-    -- Create:Aeronautics Helm API:
-  -- setThrottle(forward, up, right)    setSail(f, u, r)
-    pcall(function()
-        self.helm.setThrottle(fwd, up, right)
-    end)
-
-    pcall(function()
-        self.helm.setSail(fwd, up, right)
-    end)
+    -- helmAPI.setThrottle is already wrapped with pcall internally
+    self.helm.setThrottle(fwd, up, right)
 end
 
 
 function Nav:_stop()
-    pcall(function() self.helm.setThrottle(0, 0, 0) end)
-    pcall(function() self.helm.setSail(0, 0, 0) end)
+    self.helm.setThrottle(0, 0, 0)
     self.pid3:reset()
     self.pid_yaw:reset()
 end
