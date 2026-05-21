@@ -99,8 +99,9 @@ C.NAV_FOLLOW_INVERT = true
 -- 注意：角度接近0说明目标就在正前方很近处（已经飞过去了）
 -- 若导航台有 getDistance 则优先用距离
 C.NAV_FOLLOW_ARRIVE_DIST = 5.0   -- 到达距离阈值（blocks），需导航台支持 getDistance
-C.NAV_FOLLOW_ARRIVE_DEG  = 20.0  -- 角度阈值（度），|rel|<20且持续一段时间视为到达
-C.NAV_FOLLOW_ARRIVE_TIME = 1.5   -- 持续确认时间（秒），避免飞越时误触发
+C.NAV_FOLLOW_ARRIVE_DEG  = 25.0  -- 角度阈值（度），|rel|<25 时开始累计
+C.NAV_FOLLOW_ARRIVE_TIME = 1.5   -- 累计确认时间（秒）
+C.NAV_FOLLOW_MIN_TIME    = 3.0   -- 起飞后最少飞行秒数，之后才开始检测到达（防误触发）
 
 -- ── 飞行参数 ───────────────────────────────────────────────────
 C.MAX_TILT       = 25.0  -- max tilt angle (deg)

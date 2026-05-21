@@ -110,22 +110,25 @@ function Ctrl:updateOuter(imu_state, dt)
         if C.NAV_FOLLOW_INVERT then world_bear = world_bear + math.pi end
 
         -- ── 到达检测 ────────────────────────────────────────────
-        -- 飞向目标时 nav_rel ≈ 180°（home在身后，invert时正飞向目标）
-        -- 飞越目标后 nav_rel 翻转到 ≈ 0°（home转到身前）
+        -- 启动后先等 NAV_FOLLOW_MIN_TIME 秒，避免起飞初始误触发
+        self._nav_follow_time = (self._nav_follow_time or 0) + dt
+        local min_time = C.NAV_FOLLOW_MIN_TIME or 3.0
+
         local abs_rel = math.abs(rel)
-        if abs_rel > 150 then
-            self._nav_was_behind = true   -- 确认曾经"home在身后"
-        end
-        local arrive_deg = C.NAV_FOLLOW_ARRIVE_DEG or 20
-        if self._nav_was_behind and abs_rel < arrive_deg then
-            self._nav_arrive_acc = (self._nav_arrive_acc or 0) + dt  -- 用真实 dt
-        else
-            self._nav_arrive_acc = 0
+        local arrive_deg = C.NAV_FOLLOW_ARRIVE_DEG or 25
+
+        if self._nav_follow_time >= min_time then
+            if abs_rel < arrive_deg then
+                self._nav_arrive_acc = (self._nav_arrive_acc or 0) + dt
+            else
+                -- EMA 衰减而非硬重置：允许短暂越过阈值
+                self._nav_arrive_acc = (self._nav_arrive_acc or 0) * 0.7
+            end
         end
 
         -- 调试：暴露到达累计时间
         self.dbg_arrive = {
-            rel=rel, was_behind=self._nav_was_behind,
+            rel=rel, t=self._nav_follow_time or 0,
             acc=self._nav_arrive_acc or 0,
             need=C.NAV_FOLLOW_ARRIVE_TIME or 1.5,
         }
@@ -273,6 +276,7 @@ function Ctrl:arm(alt, yaw)
     self.nav_follow_speed = nil
     self._nav_was_behind  = false
     self._nav_arrive_acc  = 0
+    self._nav_follow_time = 0
     self.nav_arrived      = false
     -- reset all integrators
     for _, p in ipairs({

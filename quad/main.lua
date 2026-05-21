@@ -317,6 +317,9 @@ local function handle_cmd(line)
             local spd = tonumber(parts[2]) or 1.5
             spd = math.max(0.2, math.min(spd, C.POS_MAX_VEL))
             ctrl.nav_follow_speed = spd
+            ctrl._nav_arrive_acc  = 0       -- 重置到达计时
+            ctrl._nav_follow_time = 0       -- 重置飞行计时
+            ctrl.nav_arrived      = false
             ctrl.target_x = nil   -- 关闭位置定点，避免冲突
             ctrl.target_z = nil
             gui:log(string.format("Nav follow ON, speed=%.1f m/s  (hover to stop)", spd), "OK")
