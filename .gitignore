@@ -1,0 +1,12 @@
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.vscode/
+*.swp
+*.swo
+
+# CC:Tweaked 运行时生成的日志（若挂载本地目录调试）
+*.log
+/saves/
