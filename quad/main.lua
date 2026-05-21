@@ -52,6 +52,13 @@ local mixer = Mix.new()
 local ctrl  = Ctrl.new()
 local gui   = GUI.new()
 
+-- ── tweaked_controller 手柄外设 ───────────────────────────────
+local gamepad = peripheral.find("tweaked_controller")
+if gamepad then
+    gamepad.setFullPrecision(true)   -- 开启全精度，轴值 -1..1（默认只有15级）
+    print("Gamepad found: " .. peripheral.getName(gamepad))
+end
+
 -- build status table for GUI
 local function make_status()
     local s = imu_state
@@ -115,9 +122,14 @@ local function ctrlLoop()
                     ctrl.nav_arrived = false
                     gui:log("Nav arrived! Auto-landing...", "OK")
                     ctrl.target_alt = 0.3
-                    -- 开一个 coroutine-style 延时降落（直接在 ctrlLoop 里 sleep 会阻塞整个环）
-                    -- 改为设置标志，让 inputLoop 里单独处理
                     _nav_landing = true
+                end
+                -- navfollow 进入惯性修正阶段
+                if ctrl.nav_returning and not ctrl._nav_returning_logged then
+                    ctrl._nav_returning_logged = true
+                    gui:log(string.format("Correcting inertia (%.1fs)...", C.NAV_RETURN_TIME or 1.0), "OK")
+                elseif not ctrl.nav_returning then
+                    ctrl._nav_returning_logged = false
                 end
             end
             local po, ro, yo = ctrl:updateInner(imu_state, dt)
@@ -166,7 +178,7 @@ local function handle_cmd(line)
     local cmd = parts[1] or ""
 
     if cmd == "help" then
-        gui:log("arm disarm hover goto navfollow alt yaw land pos motors quit", "INFO")
+        gui:log("arm disarm hover goto navfollow manual alt yaw land pos motors quit", "INFO")
     elseif cmd == "arm" then
         local h = tonumber(parts[2]) or 5
         gui:log("Calibrating sensors...", "INFO")
@@ -246,13 +258,36 @@ local function handle_cmd(line)
                 d.ex or 0, d.ez or 0, d.tvx or 0, d.tvz or 0,
                 d.rp or 0, d.rr or 0, d.ix or 0, d.iz or 0), "INFO")
         end
-        -- navfollow 到达进度
-        if ctrl.nav_follow_speed then
+        -- navfollow 到达进度 / 惯性修正进度
+        if ctrl.nav_follow_speed or ctrl.nav_returning then
             local da = ctrl.dbg_arrive
             if da then
+                local phase = da.phase or "arrive"
                 gui:log(string.format(
-                    "navfollow: rel=%.1f was_behind=%s arrive=%.2f/%.2f",
-                    da.rel, tostring(da.was_behind), da.acc, da.need), "INFO")
+                    "navfollow[%s]: rel=%.1f arrive=%.2f/%.2f",
+                    phase, da.rel or 0, da.acc, da.need), "INFO")
+            end
+        elseif ctrl.dbg_phase then
+            gui:log("navfollow phase: " .. ctrl.dbg_phase, "INFO")
+        end
+    elseif cmd == "manual" then
+        -- 每次执行时重新查找手柄（防止启动时未连接）
+        gamepad = peripheral.find("tweaked_controller")
+        if gamepad then gamepad.setFullPrecision(true) end
+        if not gamepad then
+            gui:log("No tweaked_controller found! Check connection.", "ERR")
+        elseif not ctrl.armed then
+            gui:log("Arm first before enabling manual mode.", "WARN")
+        else
+            _manual_enabled = not _manual_enabled
+            if _manual_enabled then
+                gui:log("Manual mode ON  (B=emergency disarm)", "WARN")
+                gui:log(string.format("Axes: climb=%d yaw=%d pitch=%d roll=%d",
+                    C.MANUAL_AXIS_CLIMB, C.MANUAL_AXIS_YAW,
+                    C.MANUAL_AXIS_PITCH, C.MANUAL_AXIS_ROLL), "INFO")
+            else
+                ctrl:hover(imu_state)
+                gui:log("Manual mode OFF  → hovering", "OK")
             end
         end
     elseif cmd == "motors" then
@@ -423,9 +458,42 @@ end
 gui:drawFrame()
 gui:log("Quad FC started  CTRL_HZ=" .. C.CTRL_HZ, "OK")
 gui:log("Motors: " .. mixer:status(), "INFO")
+if gamepad then
+    gui:log("Gamepad ready. Use 'manual' cmd to enable.", "INFO")
+else
+    gui:log("No gamepad found (controller_tweaked).", "WARN")
+end
 gui:drawInput()
 
-parallel.waitForAny(ctrlLoop, renderLoop, gpsLoop, inputLoop)
+-- ── 手动操控循环（20Hz，与 ctrlLoop 同频）────────────────────
+local _manual_enabled = false
+
+local function manualLoop()
+    while running do
+        local now = os.clock()
+        if _manual_enabled and gamepad and ctrl.armed then
+            -- 读取所有轴 getAxis(n) 返回 -1..1
+            local axes = {}
+            for i = 1, 6 do
+                local ok, v = pcall(function() return gamepad.getAxis(i) end)
+                axes[i] = (ok and type(v) == "number") and v or 0
+            end
+            -- 按钮：Face Down(1)=切换手动/自动, Face Right(2)=紧急解锁
+            local btnB_ok, btnB = pcall(function() return gamepad.getButton(2) end)
+            if btnB_ok and btnB then
+                ctrl:disarm()
+                _manual_enabled = false
+                gui:log("EMERGENCY DISARM (B button)", "ERR")
+            end
+            ctrl:applyManual(axes, 1/20)
+        end
+        local elapsed = os.clock() - now
+        local sleep = (1/20) - elapsed
+        if sleep > 0.001 then os.sleep(sleep) end
+    end
+end
+
+parallel.waitForAny(ctrlLoop, renderLoop, gpsLoop, inputLoop, manualLoop)
 
 mixer:allStop()
 term.setBackgroundColor(colors.black)

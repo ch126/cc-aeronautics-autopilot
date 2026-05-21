@@ -100,8 +100,6 @@ function Ctrl:updateOuter(imu_state, dt)
     local raw_pitch, raw_roll = 0, 0
 
     -- ── Nav Follow 模式：跟着导航台方向飞 ─────────────────────
-    -- nav_follow_speed 不为 nil 时，忽略 target_x/z，
-    -- 按导航台指向以固定速度飞行（yaw=0 为参考方向，rel 为机头相对偏角）
     if self.nav_follow_speed and imu_state.nav_rel ~= nil then
         local rel      = imu_state.nav_rel
         local rel_rad  = math.rad(rel)
@@ -110,23 +108,19 @@ function Ctrl:updateOuter(imu_state, dt)
         if C.NAV_FOLLOW_INVERT then world_bear = world_bear + math.pi end
 
         -- ── 到达检测 ────────────────────────────────────────────
-        -- 启动后先等 NAV_FOLLOW_MIN_TIME 秒，避免起飞初始误触发
         self._nav_follow_time = (self._nav_follow_time or 0) + dt
-        local min_time = C.NAV_FOLLOW_MIN_TIME or 3.0
-
-        local abs_rel = math.abs(rel)
-        local arrive_deg = C.NAV_FOLLOW_ARRIVE_DEG or 25
+        local min_time   = C.NAV_FOLLOW_MIN_TIME    or 3.0
+        local abs_rel    = math.abs(rel)
+        local arrive_deg = C.NAV_FOLLOW_ARRIVE_DEG  or 25
 
         if self._nav_follow_time >= min_time then
             if abs_rel < arrive_deg then
                 self._nav_arrive_acc = (self._nav_arrive_acc or 0) + dt
             else
-                -- EMA 衰减而非硬重置：允许短暂越过阈值
                 self._nav_arrive_acc = (self._nav_arrive_acc or 0) * 0.7
             end
         end
 
-        -- 调试：暴露到达累计时间
         self.dbg_arrive = {
             rel=rel, t=self._nav_follow_time or 0,
             acc=self._nav_arrive_acc or 0,
@@ -135,12 +129,13 @@ function Ctrl:updateOuter(imu_state, dt)
 
         local arrive_time = C.NAV_FOLLOW_ARRIVE_TIME or 1.5
         if (self._nav_arrive_acc or 0) >= arrive_time then
-            -- 到达！停止飞行，触发降落
-            self.nav_follow_speed = nil
-            self._nav_was_behind  = false
-            self._nav_arrive_acc  = 0
-            self.nav_arrived      = true   -- 供 main.lua 触发降落
-            -- 直接停在当前位置（速度阻尼），不再计算飞行指令
+            -- 到达！记录当前飞行方向的反向作为惯性修正方位角，切换到修正阶段
+            self.nav_follow_speed  = nil
+            self._nav_arrive_acc   = 0
+            self._nav_return_acc   = 0
+            self._nav_correct_bear = world_bear + math.pi
+            self.nav_returning     = true
+            self.dbg_phase         = "returning"   -- 调试：当前阶段
             raw_pitch = 0
             raw_roll  = 0
         else
@@ -161,6 +156,39 @@ function Ctrl:updateOuter(imu_state, dt)
                 ix=0, iz=0,
                 nav_rel=rel,
             }
+        end
+
+    -- ── 惯性修正阶段：到达后用固定反向方位角飞一小段，补偿冲过头 ──
+    elseif self.nav_returning then
+        -- 使用到达瞬间记录的固定方位角（不再查导航台），避免随姿态抖动而漂移
+        local ret_bear = self._nav_correct_bear or 0
+        local ret_spd  = C.NAV_RETURN_SPEED or 0.5
+        local target_vx = ret_spd * math.sin(ret_bear)
+        local target_vz = ret_spd * math.cos(ret_bear)
+        local dvx   = target_vx - vx
+        local dvz   = target_vz - vz
+        local dvx_b =  cy * dvx + sy * dvz
+        local dvz_b = -sy * dvx + cy * dvz
+        raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+        raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+
+        self._nav_return_acc = (self._nav_return_acc or 0) + dt
+        local ret_time = C.NAV_RETURN_TIME or 1.0
+
+        self.dbg_arrive = {
+            rel=0, t=self._nav_return_acc or 0,
+            acc=self._nav_return_acc or 0,
+            need=ret_time, phase="correct",
+        }
+
+        if self._nav_return_acc >= ret_time then
+            -- 修正完成，触发降落
+            self.nav_returning    = false
+            self._nav_return_acc  = 0
+            self.nav_arrived      = true
+            self.dbg_phase        = "landing"
+            raw_pitch = 0
+            raw_roll  = 0
         end
     elseif self.target_x and imu_state.x then
         local ex = self.target_x - imu_state.x
@@ -278,6 +306,8 @@ function Ctrl:arm(alt, yaw)
     self._nav_arrive_acc  = 0
     self._nav_follow_time = 0
     self.nav_arrived      = false
+    self.nav_returning    = false
+    self._nav_return_acc  = 0
     -- reset all integrators
     for _, p in ipairs({
         self.att_p,  self.att_q,  self.att_r,
@@ -298,6 +328,7 @@ function Ctrl:hover(imu_state)
     self.target_pitch     = 0
     self.target_roll      = 0
     self.nav_follow_speed = nil   -- 停止 nav follow
+    self.manual_mode      = false -- 退出手动模式
     if imu_state then
         self.target_alt = imu_state.altitude or self.target_alt
         self.target_yaw = imu_state.yaw      or self.target_yaw
@@ -315,6 +346,46 @@ function Ctrl:hover(imu_state)
         self._pos_ix  = 0
         self._pos_iz  = 0
     end
+end
+
+-- ── 手动模式：接收 controller_tweaked 摇杆输入 ──────────────
+-- 调用方式：ctrl:applyManual(axes, dt)
+--   axes = { [1]=lx, [2]=ly, [3]=rx, [4]=ry, ... }  (-1..1)
+-- 直接写入 target_pitch/roll，并增量修改 target_yaw/target_alt
+function Ctrl:applyManual(axes, dt)
+    if not self.armed then return end
+    self.manual_mode = true
+
+    -- 死区过滤
+    local function dz(v)
+        local d = C.MANUAL_DEADZONE or 0.08
+        if math.abs(v) < d then return 0 end
+        return (v - (v > 0 and d or -d)) / (1 - d)
+    end
+
+    local climb_axis = dz(axes[C.MANUAL_AXIS_CLIMB] or 0)
+    local yaw_axis   = dz(axes[C.MANUAL_AXIS_YAW]   or 0)
+    local pitch_axis = dz(axes[C.MANUAL_AXIS_PITCH]  or 0)
+    local roll_axis  = dz(axes[C.MANUAL_AXIS_ROLL]   or 0)
+
+    -- 右摇杆 Y 推上=负值→取负=前倾；左摇杆 Y 推上=负值→取负=爬升
+    self.target_pitch = pitch_axis * (C.MANUAL_MAX_PITCH or 20)   -- 负负=正=前倾
+    self.target_roll  = roll_axis  * (C.MANUAL_MAX_ROLL  or 20)
+
+    -- 偏航：增量式（左摇杆X推右=正值=右偏航）
+    self.target_yaw = (self.target_yaw or 0)
+        + yaw_axis * (C.MANUAL_YAW_RATE or 45) * dt
+    self.target_yaw = self.target_yaw % 360
+
+    -- 高度：增量式（左摇杆Y推上=负值→取负=爬升）
+    self.target_alt = (self.target_alt or 0)
+        - climb_axis * (C.MANUAL_CLIMB_RATE or 2) * dt
+    self.target_alt = math.max(0.2, self.target_alt)
+
+    -- 手动模式关闭位置定点，避免冲突
+    self.target_x     = nil
+    self.target_z     = nil
+    self.nav_follow_speed = nil
 end
 
 return Ctrl

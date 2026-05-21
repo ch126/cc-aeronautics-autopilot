@@ -102,6 +102,8 @@ C.NAV_FOLLOW_ARRIVE_DIST = 5.0   -- 到达距离阈值（blocks），需导航�
 C.NAV_FOLLOW_ARRIVE_DEG  = 25.0  -- 角度阈值（度），|rel|<25 时开始累计
 C.NAV_FOLLOW_ARRIVE_TIME = 1.5   -- 累计确认时间（秒）
 C.NAV_FOLLOW_MIN_TIME    = 3.0   -- 起飞后最少飞行秒数，之后才开始检测到达（防误触发）
+C.NAV_RETURN_SPEED       = 0.5   -- 惯性修正速度（blocks/s），慢速往回走
+C.NAV_RETURN_TIME        = 1.0   -- 惯性修正持续时间（秒），之后触发降落
 
 -- ── 飞行参数 ───────────────────────────────────────────────────
 C.MAX_TILT       = 25.0  -- max tilt angle (deg)
@@ -149,5 +151,19 @@ C.PID_ALT        = { kp=5.0,  ki=0.05, kd=0.0,  imax=10, omax=50  }
 -- ── 外环 PID：水平位置（10Hz，已弃用，保留备用）────────────────
 C.PID_POS_X      = { kp=1.2,  ki=0.0,  kd=0.3,  imax=0,  omax=25 }
 C.PID_POS_Z      = { kp=1.2,  ki=0.0,  kd=0.3,  imax=0,  omax=25 }
+
+-- ── 手动操控（tweaked_controller）───────────────────────────
+C.MANUAL_MAX_PITCH   = 20.0   -- 摇杆满偏对应的最大 pitch 角（度）
+C.MANUAL_MAX_ROLL    = 20.0   -- 摇杆满偏对应的最大 roll  角（度）
+C.MANUAL_YAW_RATE    = 45.0   -- 摇杆满偏对应的偏航速率（度/s）
+C.MANUAL_CLIMB_RATE  = 2.0    -- 摇杆满偏对应的爬升速率（blocks/s）
+-- 轴索引（tweaked_controller 官方映射，+Y 轴向下）：
+--   1=左摇杆X  2=左摇杆Y  3=右摇杆X  4=右摇杆Y  5=左扳机  6=右扳机
+-- 左摇杆 Y 推上=负值→取负后向上爬升；右摇杆 Y 推上=负值→取负后前倾
+C.MANUAL_AXIS_CLIMB  = 2      -- 左摇杆 Y（推上=负值，取反后=爬升）
+C.MANUAL_AXIS_YAW    = 1      -- 左摇杆 X（推右=正值=右偏航）
+C.MANUAL_AXIS_PITCH  = 4      -- 右摇杆 Y（推上=负值，取反后=前倾）
+C.MANUAL_AXIS_ROLL   = 3      -- 右摇杆 X（推右=正值=右滚转）
+C.MANUAL_DEADZONE    = 0.08   -- 摇杆死区（-1..1 范围内）
 
 return C
