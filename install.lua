@@ -2,10 +2,14 @@
 --  install.lua
 --  一键部署脚本 —— 在 CC:Tweaked 电脑中运行
 --
---  使用方法（在游戏内电脑终端）：
---    pastebin run <pastebin_id>
---  或者把整个 autopilot/ 目录上传后运行:
+--  【推荐】游戏内一键安装（仅需运行这一条命令）：
+--
+--    wget https://raw.githubusercontent.com/ch126/cc-aeronautics-autopilot/main/install.lua
 --    lua install.lua
+--
+--  安装完成后直接运行：
+--    lua autopilot/main.lua
+--  或重启电脑（startup.lua 会自动启动）
 -- =============================================================
 
 local BASE_URL = "https://raw.githubusercontent.com/ch126/cc-aeronautics-autopilot/main/"
@@ -17,6 +21,7 @@ local FILES = {
     "autopilot/pid.lua",
     "autopilot/obstacle.lua",
     "autopilot/nav.lua",
+    "autopilot/gui.lua",
     "autopilot/main.lua",
     "startup.lua",
 }
