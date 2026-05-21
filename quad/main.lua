@@ -472,13 +472,23 @@ local function manualLoop()
     while running do
         local now = os.clock()
         if _manual_enabled and gamepad and ctrl.armed then
-            -- 读取所有轴 getAxis(n) 返回 -1..1
             local axes = {}
             for i = 1, 6 do
                 local ok, v = pcall(function() return gamepad.getAxis(i) end)
                 axes[i] = (ok and type(v) == "number") and v or 0
             end
-            -- 按钮：Face Down(1)=切换手动/自动, Face Right(2)=紧急解锁
+            -- 调试：每秒打印一次轴值
+            local t = math.floor(os.clock())
+            if not _manual_dbg_t or _manual_dbg_t ~= t then
+                _manual_dbg_t = t
+                gui:log(string.format(
+                    "MANUAL axes: lx=%.2f ly=%.2f rx=%.2f ry=%.2f armed=%s",
+                    axes[1], axes[2], axes[3], axes[4], tostring(ctrl.armed)), "WARN")
+                gui:log(string.format(
+                    "  tp=%.1f tr=%.1f talt=%.1f manual_mode=%s",
+                    ctrl.target_pitch, ctrl.target_roll,
+                    ctrl.target_alt or 0, tostring(ctrl.manual_mode)), "INFO")
+            end
             local btnB_ok, btnB = pcall(function() return gamepad.getButton(2) end)
             if btnB_ok and btnB then
                 ctrl:disarm()
