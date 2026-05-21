@@ -283,6 +283,8 @@ while running do
         if btn_action then
             gui:drawButtons(btn_action)
             on_button(btn_action)  -- dialog() runs synchronously here
+            -- dialog may have consumed the nav_timer event; restart it
+            nav_timer = os.startTimer(dt)
         end
 
     elseif MODE == "MANUAL" and ev == "key" then

@@ -459,6 +459,7 @@ function GUI:drawInput()
     t.setCursorPos(cx, self.ROW_INPUT)
     t.setTextColor(TH.input_fg)
     t.setBackgroundColor(TH.input_bg)
+    t.setCursorBlink(true)
 end
 
 
@@ -621,6 +622,7 @@ function GUI:dialog(title, fields)
     -- Hide overlay, then do a full repaint so nothing is left behind
     win.setVisible(false)
     self.modal = false
+    t.setCursorBlink(false)
     self:drawFrame()
     self:drawLog()
     self:drawInput()
