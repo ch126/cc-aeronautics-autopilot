@@ -123,9 +123,9 @@ C.PID_RATE_YAW   = { kp=0.25, ki=0.0,  kd=0.0,  imax=0,  omax=10 }
 -- 直接输出除以 RATE_MAX 得到 -1..1，不再走 rate loop
 -- kd 作用于测量值（D-on-measurement），等效于角速度阻尼
 -- dmax 限制D项最大贡献，防止噪声脉冲引起大幅转速差
-C.PID_ATT_PITCH  = { kp=35.0, ki=0.0,  kd=6.0,  dmax=45, imax=0,  omax=120 }
-C.PID_ATT_ROLL   = { kp=35.0, ki=0.0,  kd=6.0,  dmax=45, imax=0,  omax=120 }
-C.PID_ATT_YAW    = { kp=15.0, ki=0.1,  kd=2.5,  dmax=25, imax=30, omax=90  }
+C.PID_ATT_PITCH  = { kp=50.0, ki=0.0,  kd=10.0, dmax=60, imax=0,  omax=120 }
+C.PID_ATT_ROLL   = { kp=50.0, ki=0.0,  kd=10.0, dmax=60, imax=0,  omax=120 }
+C.PID_ATT_YAW    = { kp=20.0, ki=0.1,  kd=4.0,  dmax=25, imax=30, omax=90  }
 
 -- ── 高度级联参数 ───────────────────────────────────────────────
 C.ALT_POS_GAIN   = 1.0   -- alt_err -> target_climb (m/s per block)
@@ -153,10 +153,10 @@ C.PID_POS_X      = { kp=1.2,  ki=0.0,  kd=0.3,  imax=0,  omax=25 }
 C.PID_POS_Z      = { kp=1.2,  ki=0.0,  kd=0.3,  imax=0,  omax=25 }
 
 -- ── 手动操控（tweaked_controller）───────────────────────────
-C.MANUAL_MAX_PITCH   = 30.0   -- 摇杆满偏对应的最大 pitch 角（度）
-C.MANUAL_MAX_ROLL    = 30.0   -- 摇杆满偏对应的最大 roll  角（度）
-C.MANUAL_YAW_RATE    = 90.0   -- 摇杆满偏对应的偏航速率（度/s）
-C.MANUAL_CLIMB_RATE  = 4.0    -- 摇杆满偏对应的爬升速率（blocks/s）
+C.MANUAL_MAX_PITCH   = 40.0   -- 摇杆满偏对应的最大 pitch 角（度）
+C.MANUAL_MAX_ROLL    = 40.0   -- 摇杆满偏对应的最大 roll  角（度）
+C.MANUAL_YAW_RATE    = 120.0  -- 摇杆满偏对应的偏航速率（度/s）
+C.MANUAL_CLIMB_RATE  = 5.0    -- 摇杆满偏对应的爬升速率（blocks/s）
 -- 轴索引（tweaked_controller 官方映射，+Y 轴向下）：
 --   1=左摇杆X  2=左摇杆Y  3=右摇杆X  4=右摇杆Y  5=左扳机  6=右扳机
 -- 左摇杆 Y 推上=负值→取负后向上爬升；右摇杆 Y 推上=负值→取负后前倾
