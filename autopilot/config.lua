@@ -1,88 +1,79 @@
 -- =============================================================
 --  autopilot/config.lua
---  Global config: peripheral names, PID gains, thresholds
---  Target: CC:Tweaked + Create:Aeronautics  NeoForge 1.21.1
+--  Create:Aeronautics (Simulated Project) + CC:Tweaked
+--
+--  Peripheral blocks (place on the ship, connect via Wired Modem):
+--    altitude_sensor  -> reads Y height
+--    velocity_sensor  -> reads scalar speed
+--    gimbal_sensor    -> reads pitch + roll angles
+--    nav_table        -> reads heading angle (relative to north)
+--
+--  Control is via redstone analog output (0-15) on computer sides:
+--    SIDE_THRUST_F / B = forward / backward propellers
+--    SIDE_THRUST_U / D = upward  / downward lift
+--    SIDE_YAW_L  / R   = yaw left / right thrusters
 -- =============================================================
 
 local Config = {}
 
--- -- Peripheral ------------------------------------------------
--- Create:Aeronautics Airship Helm peripheral type
--- Run `peripheral.getNames()` in-game to find the exact name.
--- Common values:
---   "create_aeronautics:airship_helm"
---   "create_aeronautics:tilt_airship_helm"
---   "airshipHelm"
--- Set to nil to auto-scan all attached peripherals.
-Config.HELM_TYPE = nil  -- nil = auto-detect
+-- ── Sensor peripheral names (nil = auto-scan by type) ─────────
+-- Set to exact name shown by `scan` command if auto-detect fails.
+Config.SENSOR_ALTITUDE  = nil   -- peripheral type: "altitude_sensor"
+Config.SENSOR_VELOCITY  = nil   -- peripheral type: "velocity_sensor"
+Config.SENSOR_GIMBAL    = nil   -- peripheral type: "gimbal_sensor"
+Config.SENSOR_NAV       = nil   -- peripheral type: "navigation_table"
 
--- If auto-detect finds multiple, it picks the first.
--- Set to exact peripheral side/name to force a specific one, e.g. "right"
-Config.HELM_SIDE = nil  -- nil = auto-detect
+-- ── Redstone output sides ─────────────────────────────────────
+-- Set each to the computer side facing the corresponding modem/propeller.
+-- Sides: "top" "bottom" "left" "right" "front" "back"
+Config.SIDE_THRUST_F = "front"   -- forward thrust
+Config.SIDE_THRUST_B = "back"    -- reverse thrust (or nil if only fwd)
+Config.SIDE_THRUST_U = "top"     -- upward lift
+Config.SIDE_THRUST_D = "bottom"  -- downward thrust (or nil)
+Config.SIDE_YAW_L    = "left"    -- yaw left
+Config.SIDE_YAW_R    = "right"   -- yaw right
 
--- Radar peripheral (Advanced Peripherals). Set HAS_RADAR=false if not installed.
-Config.RADAR_NAME = "neuralInterface"
-Config.HAS_RADAR  = false
+-- Redstone analog power range for propellers (0 = off, 15 = max)
+-- Most propeller/fan blocks respond to full 0-15 analog range.
+Config.RS_MAX = 15
 
--- -- Flight parameters -----------------------------------------
-Config.TICK_RATE          = 0.05   -- main loop interval (s), ~20 tps
-Config.ARRIVAL_RADIUS     = 2.0    -- arrival threshold (blocks)
-Config.MAX_SPEED          = 8.0    -- max speed cap (blocks/s)
-Config.MAX_VERTICAL_SPEED = 4.0    -- max vertical speed (blocks/s)
-Config.MAX_THROTTLE       = 1.0    -- throttle range [-1, 1]
-Config.YAW_SPEED          = 60.0   -- max yaw rate (deg/s)
-Config.HEADING_THRESHOLD  = 5.0    -- yaw error below this allows forward thrust (deg)
+-- ── Flight parameters ─────────────────────────────────────────
+Config.TICK_RATE         = 0.05    -- loop interval (s)
+Config.ARRIVAL_RADIUS    = 3.0     -- waypoint arrival distance (blocks) [dead reckoning]
+Config.MAX_SPEED         = 8.0     -- max desired horizontal speed (m/s)
+Config.YAW_THRESHOLD     = 5.0     -- heading error below this -> allow thrust (deg)
+Config.ALT_THRESHOLD     = 1.0     -- altitude error below this -> stop lift (blocks)
 
--- -- PID gains (horizontal X/Z) --------------------------------
-Config.PID_H = {
-    kp = 0.18,
-    ki = 0.004,
-    kd = 0.22,
+-- ── PID gains (altitude) ─────────────────────────────────────
+Config.PID_ALT = {
+    kp = 1.5,
+    ki = 0.05,
+    kd = 0.8,
     integral_max = 5.0,
-    output_max   = 1.0,
+    output_max   = 15.0,
 }
 
--- -- PID gains (vertical Y) ------------------------------------
-Config.PID_V = {
-    kp = 0.30,
+-- ── PID gains (horizontal speed) ─────────────────────────────
+Config.PID_SPD = {
+    kp = 2.0,
+    ki = 0.1,
+    kd = 0.5,
+    integral_max = 5.0,
+    output_max   = 15.0,
+}
+
+-- ── PID gains (heading / yaw) ─────────────────────────────────
+Config.PID_HDG = {
+    kp = 0.3,
     ki = 0.005,
-    kd = 0.25,
-    integral_max = 3.0,
-    output_max   = 1.0,
+    kd = 0.1,
+    integral_max = 10.0,
+    output_max   = 15.0,
 }
 
--- -- PID gains (yaw) -------------------------------------------
-Config.PID_YAW = {
-    kp = 0.8,
-    ki = 0.01,
-    kd = 0.15,
-    integral_max = 30.0,
-    output_max   = 1.0,
-}
-
--- -- Obstacle avoidance ----------------------------------------
-Config.OBSTACLE = {
-    detect_range  = 16,
-    repulse_range = 6,
-    repulse_gain  = 3.5,
-    attract_gain  = 1.0,
-    min_alt       = 5,
-    alt_step      = 4,
-    scan_dirs = {
-        {1,0,0},{-1,0,0},{0,0,1},{0,0,-1},{0,1,0},{0,-1,0},
-        {1,0,1},{-1,0,1},{1,0,-1},{-1,0,-1},
-        {1,1,0},{-1,1,0},{0,1,1},{0,1,-1},
-    },
-}
-
--- -- Log level -------------------------------------------------
-Config.LOG_LEVEL = "INFO"  -- DEBUG | INFO | WARN | ERROR
-
--- -- Velocity control mode (MODE A) ---------------------------
--- Used when helm exposes setVelocity(vx, vy, vz).
--- VEL_KP : proportional gain  position_error -> desired_speed
---          e.g. 0.5 means 10-block error -> 5 m/s target speed
--- MAX_SPEED is already defined above and acts as the speed cap.
-Config.VEL_KP = 0.5  -- position error -> velocity gain
+-- ── Dead reckoning ────────────────────────────────────────────
+-- Used for relative waypoint navigation (goto dx, dz).
+-- Accuracy degrades over time; reset with 'pos reset'.
+Config.DR_DECAY = 0.0  -- optional velocity decay correction (0 = off)
 
 return Config

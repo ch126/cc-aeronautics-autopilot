@@ -1,15 +1,26 @@
 -- =============================================================
---  autopilot/main.lua  (Single-loop, no parallel)
---  Single event loop handles nav updates + UI events.
---  No parallel coroutines -> no race condition with dialog.
+--  autopilot/main.lua  (Create:Aeronautics Simulated Project)
 --
---  Modes:
---    AUTO   - PID autopilot to waypoints
---    MANUAL - direct keyboard control  (type "manual" to enter)
---  Keys in MANUAL mode:
---    W/S = forward/back   A/D = strafe left/right
---    R/F = up/down        Q/E = yaw left/right
---    X   = stop all       M   = exit manual mode
+--  Commands:
+--    scan              list all peripherals
+--    sensors           show sensor connection status
+--    hover             hold current altitude, stop moving
+--    alt <Y>           set altitude target (hold at Y blocks)
+--    hdg <deg>         set heading target (0=north, 90=east)
+--    speed <v>         set target forward speed (m/s)
+--    fly <alt> <hdg> <spd>   fly at altitude/heading/speed
+--    goto <dX> <dZ> [alt]    fly to relative offset (dead reckoning)
+--    stop              stop all outputs
+--    pos               show dead-reckoning position
+--    pos reset         reset dead-reckoning origin
+--    manual            enter manual redstone control
+--    tune alt|spd|hdg <kp> <ki> <kd>   adjust PID gains
+--    help              show this list
+--    exit / quit       shutdown
+--
+--  MANUAL mode keys:
+--    W/S = forward/back   A/D = yaw left/right
+--    R/F = up/down        X = stop   M = exit manual
 -- =============================================================
 
 package.path = package.path .. ";/autopilot/?.lua;/?.lua"
@@ -25,94 +36,62 @@ gui:log("Initializing...", "INFO")
 
 local ok_nav, nav = pcall(Nav.new)
 if not ok_nav then
-    gui:log("Helm not found: " .. tostring(nav), "ERR")
-    gui:log("Type 'scan' to list peripherals.", "WARN")
+    gui:log("Nav init failed: " .. tostring(nav), "ERR")
+    gui:log("Continuing without flight control.", "WARN")
     nav = nil
 else
-    gui:log("Helm connected. Ready!", "OK")
-    if nav.helm._name then
-        gui:log("Peripheral: " .. nav.helm._name, "INFO")
-    end
+    gui:log("Nav ready. " .. nav:getStatus().sensors, "OK")
 end
 
 -- ── Mode state ────────────────────────────────────────────────
-local MODE         = "AUTO"
-local manual_fwd   = 0
-local manual_side  = 0
-local manual_up    = 0
-local manual_yaw   = 0
-local MANUAL_STEP  = 0.25
+local MODE        = "AUTO"   -- "AUTO" | "MANUAL"
+local MAN_POWER   = 0.7      -- manual thrust level (0-1)
 
--- ── Nav timer ─────────────────────────────────────────────────
+-- ── Timer ─────────────────────────────────────────────────────
 local dt           = Config.TICK_RATE
 local RENDER_EVERY = 4
 local tick_count   = 0
 local last_nav_t   = os.clock()
 local nav_timer    = os.startTimer(dt)
 
--- ── Helpers ───────────────────────────────────────────────────
-local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
-
+-- ── Safe status ───────────────────────────────────────────────
 local function safe_status()
     if nav then
-        local s = nav:getStatus()
-        if MODE == "MANUAL" then
-            s.state = "MANUAL"
-            s.msg   = string.format(
-                "fwd:%.2f side:%.2f up:%.2f yaw:%.2f",
-                manual_fwd, manual_side, manual_up, manual_yaw)
-        end
-        return s
+        local st = nav:getStatus()
+        if MODE == "MANUAL" then st.mode = "MANUAL" end
+        return st
     end
-    local Vec3 = require("autopilot.vec3")
     return {
-        state="ERROR", msg="Helm not connected",
-        pos=Vec3.new(0,0,0), velocity=Vec3.new(0,0,0), yaw=0,
-        wp_current=0, wp_total=0, target=nil, dist=0,
-        total_dist=0, elapsed=0,
+        mode="ERROR", msg="Nav not connected",
+        altitude=0, speed=0, heading=0, pitch=0, roll=0,
+        dr_x=0, dr_z=0, elapsed=0, sensors="--",
+        tgt_alt=nil, tgt_spd=0, tgt_hdg=nil,
     }
-end
-
-local function safe_waypoints()
-    if nav then return nav.waypoints, nav.wp_index end
-    return {}, 1
-end
-
-local function apply_manual()
-    if not nav then return end
-    nav.helm.setThrottle(manual_fwd, manual_up, manual_side)
-    nav.helm.setYawTarget((nav.pos and nav.pos.yaw or 0) + manual_yaw * 5)
 end
 
 -- ── Manual key handler ────────────────────────────────────────
 local function handle_manual_key(key)
-    local step = MANUAL_STEP
-    if     key == keys.w then manual_fwd  = clamp(manual_fwd  + step, -1, 1)
-    elseif key == keys.s then manual_fwd  = clamp(manual_fwd  - step, -1, 1)
-    elseif key == keys.a then manual_side = clamp(manual_side - step, -1, 1)
-    elseif key == keys.d then manual_side = clamp(manual_side + step, -1, 1)
-    elseif key == keys.r then manual_up   = clamp(manual_up   + step, -1, 1)
-    elseif key == keys.f then manual_up   = clamp(manual_up   - step, -1, 1)
-    elseif key == keys.q then manual_yaw  = clamp(manual_yaw  - step, -1, 1)
-    elseif key == keys.e then manual_yaw  = clamp(manual_yaw  + step, -1, 1)
+    if not nav then return end
+    local p = MAN_POWER
+    if     key == keys.w then nav:manualSet(p, 0, 0, 0, 0, 0)
+    elseif key == keys.s then nav:manualSet(0, p, 0, 0, 0, 0)
+    elseif key == keys.r then nav:manualSet(0, 0, p, 0, 0, 0)
+    elseif key == keys.f then nav:manualSet(0, 0, 0, p, 0, 0)
+    elseif key == keys.a then nav:manualSet(0, 0, 0, 0, p, 0)
+    elseif key == keys.d then nav:manualSet(0, 0, 0, 0, 0, p)
     elseif key == keys.x then
-        manual_fwd=0; manual_side=0; manual_up=0; manual_yaw=0
-        if nav then nav.helm.setThrottle(0, 0, 0) end
+        nav:manualSet(0, 0, 0, 0, 0, 0)
         gui:log("Manual: all stop", "WARN")
         return
     elseif key == keys.m then
+        nav:manualSet(0, 0, 0, 0, 0, 0)
         MODE = "AUTO"
-        manual_fwd=0; manual_side=0; manual_up=0; manual_yaw=0
-        if nav then nav.helm.setThrottle(0, 0, 0) end
-        gui:log("Switched to AUTO mode", "OK")
         gui.input_prompt = "> "
+        gui:log("Exited MANUAL mode", "OK")
         gui:drawInput()
         return
     else return end
-    apply_manual()
-    gui:log(string.format(
-        "Manual fwd:%.2f side:%.2f up:%.2f",
-        manual_fwd, manual_side, manual_up), "INFO")
+    gui:log(string.format("Manual: %s", keys.getName(key)), "INFO")
 end
 
 -- ── Command handler ───────────────────────────────────────────
@@ -124,124 +103,175 @@ local function handle(cmd_str)
     if #parts == 0 then return end
     local cmd = parts[1]:lower()
 
+    -- ── Always available ──────────────────────────────────────
     if cmd == "scan" then
         local names = peripheral.getNames()
         if #names == 0 then
             gui:log("No peripherals found", "WARN")
         else
             for _, n in ipairs(names) do
-                local t = peripheral.getType(n)
-                gui:log("  " .. n .. " -> " .. tostring(t), "INFO")
+                gui:log("  " .. n .. " -> " .. tostring(peripheral.getType(n)), "INFO")
             end
         end
         return
-    end
 
-    if cmd == "manual" then
-        if not nav then gui:log("No helm for manual control", "ERR"); return end
-        nav:stop()
-        MODE = "MANUAL"
-        manual_fwd=0; manual_side=0; manual_up=0; manual_yaw=0
-        gui.input_prompt = "[M]> "
-        gui:log("MANUAL: W/S=fwd  A/D=strafe  R/F=up/dn  Q/E=yaw  X=stop  M=exit", "WARN")
-        gui:drawInput()
+    elseif cmd == "sensors" then
+        if nav then
+            gui:log(nav:getStatus().sensors, "INFO")
+        else
+            gui:log("Nav not initialized", "WARN")
+        end
         return
-    end
-
-    if not nav then gui:log("No helm, cmd ignored", "WARN"); return end
-
-    if cmd == "goto" then
-        local x,y,z = tonumber(parts[2]),tonumber(parts[3]),tonumber(parts[4])
-        if not (x and y and z) then gui:log("Usage: goto <x> <y> <z>","WARN"); return end
-        nav:clearWaypoints(); nav:addWaypoint(x,y,z); nav:start()
-        MODE = "AUTO"
-        gui:log(string.format("Target set (%.0f, %.0f, %.0f)", x, y, z), "OK")
-
-    elseif cmd == "wp" then
-        local sub = (parts[2] or ""):lower()
-        if sub == "add" then
-            local x,y,z = tonumber(parts[3]),tonumber(parts[4]),tonumber(parts[5])
-            if not (x and y and z) then gui:log("Usage: wp add <x> <y> <z>","WARN"); return end
-            nav:addWaypoint(x,y,z)
-            gui:log(string.format("WP #%d added (%.0f, %.0f, %.0f)", #nav.waypoints, x, y, z), "OK")
-        elseif sub == "clear" then
-            nav:clearWaypoints(); gui:log("All waypoints cleared","WARN")
-        else gui:log("wp sub-cmd: add | clear","INFO") end
-
-    elseif cmd == "start" then
-        MODE = "AUTO"; nav:start(); gui:log("Navigation started","OK")
-    elseif cmd == "stop" then
-        nav:stop(); gui:log("Stopped","WARN")
-
-    elseif cmd == "pos" then
-        local s = nav:getStatus()
-        gui:log(string.format("Pos: X=%.1f Y=%.1f Z=%.1f Yaw=%.1f",
-            s.pos.x, s.pos.y, s.pos.z, s.yaw), "INFO")
-
-    elseif cmd == "tune" then
-        local axis = (parts[2] or ""):lower()
-        local kp,ki,kd = tonumber(parts[3]),tonumber(parts[4]),tonumber(parts[5])
-        if not (kp and ki and kd) then gui:log("Usage: tune h|v <kp> <ki> <kd>","WARN"); return end
-        if axis == "h" then
-            nav.pid3.x:tune(kp,ki,kd); nav.pid3.z:tune(kp,ki,kd)
-            gui:log(string.format("Horiz PID kp=%.3f ki=%.4f kd=%.3f",kp,ki,kd),"OK")
-        elseif axis == "v" then
-            nav.pid3.y:tune(kp,ki,kd)
-            gui:log(string.format("Vert PID kp=%.3f ki=%.4f kd=%.3f",kp,ki,kd),"OK")
-        else gui:log("Axis: h=horizontal  v=vertical","INFO") end
-
-    elseif cmd == "help" then
-        gui:log("--- Commands ---","INFO")
-        gui:log("scan            list attached peripherals","INFO")
-        gui:log("goto x y z      fly to coordinate","INFO")
-        gui:log("wp add x y z    add waypoint","INFO")
-        gui:log("wp clear        clear all waypoints","INFO")
-        gui:log("start / stop    begin / halt navigation","INFO")
-        gui:log("manual          enter manual keyboard control","INFO")
-        gui:log("pos             print current position","INFO")
-        gui:log("tune h|v kp ki kd  adjust PID gains","INFO")
 
     elseif cmd == "exit" or cmd == "quit" then
         running = false
+        return
+
+    elseif cmd == "help" then
+        gui:log("--- Commands ---", "INFO")
+        gui:log("scan                   list peripherals", "INFO")
+        gui:log("sensors                sensor status", "INFO")
+        gui:log("hover                  hold position", "INFO")
+        gui:log("alt <Y>                set altitude (blocks)", "INFO")
+        gui:log("hdg <deg>              set heading (0=N 90=E)", "INFO")
+        gui:log("speed <v>              set forward speed (m/s)", "INFO")
+        gui:log("fly <alt> <hdg> <spd>  full fly command", "INFO")
+        gui:log("goto <dX> <dZ> [alt]   relative waypoint (DR)", "INFO")
+        gui:log("stop                   stop all", "INFO")
+        gui:log("pos / pos reset        dead-reckoning position", "INFO")
+        gui:log("manual                 keyboard control mode", "INFO")
+        gui:log("tune alt|spd|hdg ...   PID tuning", "INFO")
+        return
+    end
+
+    -- ── Require nav ───────────────────────────────────────────
+    if not nav then gui:log("Nav not available", "WARN"); return end
+
+    if cmd == "hover" then
+        nav:hover()
+        gui:log("Hovering at Y=" .. string.format("%.1f", nav:getStatus().altitude), "OK")
+
+    elseif cmd == "alt" then
+        local y = tonumber(parts[2])
+        if not y then gui:log("Usage: alt <Y>", "WARN"); return end
+        nav:setAltitude(y)
+        if nav.mode == "IDLE" then nav.mode = "HOVER" end
+        gui:log(string.format("Altitude target: %.1f", y), "OK")
+
+    elseif cmd == "hdg" then
+        local h = tonumber(parts[2])
+        if not h then gui:log("Usage: hdg <degrees>", "WARN"); return end
+        nav:setHeading(h)
+        gui:log(string.format("Heading target: %.1f deg", h), "OK")
+
+    elseif cmd == "speed" then
+        local v = tonumber(parts[2])
+        if not v then gui:log("Usage: speed <m/s>", "WARN"); return end
+        nav:setSpeed(v)
+        gui:log(string.format("Speed target: %.1f m/s", v), "OK")
+
+    elseif cmd == "fly" then
+        local alt = tonumber(parts[2])
+        local hdg = tonumber(parts[3])
+        local spd = tonumber(parts[4])
+        if not (alt and hdg) then
+            gui:log("Usage: fly <alt> <hdg> [spd]", "WARN"); return
+        end
+        nav:fly(alt, hdg, spd)
+        gui:log(string.format("Flying alt=%.0f hdg=%.0f spd=%.1f",
+            alt, hdg, spd or Config.MAX_SPEED), "OK")
+
+    elseif cmd == "goto" then
+        local dx  = tonumber(parts[2])
+        local dz  = tonumber(parts[3])
+        local alt = tonumber(parts[4])
+        if not (dx and dz) then
+            gui:log("Usage: goto <dX> <dZ> [alt]", "WARN"); return
+        end
+        nav:goto_rel(dx, dz, alt)
+        gui:log(string.format("Goto dX=%.0f dZ=%.0f (dead reckoning)", dx, dz), "OK")
+
+    elseif cmd == "stop" then
+        nav:stop()
+        gui:log("Stopped", "WARN")
+
+    elseif cmd == "pos" then
+        local sub = (parts[2] or ""):lower()
+        if sub == "reset" then
+            nav.sensors:resetDR()
+            gui:log("Dead-reckoning position reset", "OK")
+        else
+            local st = nav:getStatus()
+            gui:log(string.format("DR pos: dX=%.1f dZ=%.1f  alt=%.1f  hdg=%.1f",
+                st.dr_x, st.dr_z, st.altitude, st.heading), "INFO")
+        end
+
+    elseif cmd == "manual" then
+        nav:stop()
+        nav.mode = "MANUAL"
+        MODE = "MANUAL"
+        gui.input_prompt = "[M]> "
+        gui:log("MANUAL: W/S=fwd/rev  A/D=yaw  R/F=up/dn  X=stop  M=exit", "WARN")
+        gui:drawInput()
+
+    elseif cmd == "tune" then
+        local axis = (parts[2] or ""):lower()
+        local kp = tonumber(parts[3])
+        local ki = tonumber(parts[4])
+        local kd = tonumber(parts[5])
+        if not (kp and ki and kd) then
+            gui:log("Usage: tune alt|spd|hdg <kp> <ki> <kd>", "WARN"); return
+        end
+        if axis == "alt" then
+            nav.pid_alt:tune(kp, ki, kd)
+            gui:log(string.format("ALT PID: kp=%.3f ki=%.4f kd=%.3f", kp, ki, kd), "OK")
+        elseif axis == "spd" then
+            nav.pid_spd:tune(kp, ki, kd)
+            gui:log(string.format("SPD PID: kp=%.3f ki=%.4f kd=%.3f", kp, ki, kd), "OK")
+        elseif axis == "hdg" then
+            nav.pid_hdg:tune(kp, ki, kd)
+            gui:log(string.format("HDG PID: kp=%.3f ki=%.4f kd=%.3f", kp, ki, kd), "OK")
+        else
+            gui:log("Axis: alt | spd | hdg", "INFO")
+        end
 
     else
-        gui:log("Unknown: " .. cmd .. "  (help for list)","WARN")
+        gui:log("Unknown: " .. cmd .. "  (help for list)", "WARN")
     end
 end
 
 -- ── Button handler ────────────────────────────────────────────
 local function on_button(action)
     if action == "goto" then
-        -- dialog blocks this function until user confirms/cancels
-        -- nav_loop timer events are NOT processed while we're here (single loop)
-        local r = gui:dialog("Goto Coord", {
-            {label="X:", default="0"},
-            {label="Y:", default="80"},
-            {label="Z:", default="0"},
+        local r = gui:dialog("Goto (Relative, Dead Reckoning)", {
+            {label="dX (east+):",  default="0"},
+            {label="dZ (south+):", default="0"},
+            {label="Alt (Y):",     default=""},
         })
-        if r then handle(string.format("goto %s %s %s", r[1], r[2], r[3])) end
+        if r then
+            local alt_s = (r[3] ~= "" and r[3]) or nil
+            handle(string.format("goto %s %s%s", r[1], r[2],
+                alt_s and (" " .. alt_s) or ""))
+        end
 
     elseif action == "wp_add" then
-        local r = gui:dialog("Add Waypoint", {
-            {label="X:", default="0"},
-            {label="Y:", default="80"},
-            {label="Z:", default="0"},
+        local r = gui:dialog("Fly To (alt/hdg/spd)", {
+            {label="Altitude (Y):", default="80"},
+            {label="Heading (deg):", default="0"},
+            {label="Speed (m/s):",   default="5"},
         })
-        if r then handle(string.format("wp add %s %s %s", r[1], r[2], r[3])) end
+        if r then handle(string.format("fly %s %s %s", r[1], r[2], r[3])) end
 
-    elseif action == "wp_clear" then handle("wp clear")
-    elseif action == "wp_list"  then
-        if nav then
-            gui:log(string.format("Total %d waypoints", #nav.waypoints), "INFO")
-        end
-    elseif action == "start" then handle("start")
-    elseif action == "stop"  then handle("stop")
-    elseif action == "help"  then handle("help")
+    elseif action == "wp_clear" then handle("stop")
+    elseif action == "wp_list"  then handle("sensors")
+    elseif action == "start"    then handle("hover")
+    elseif action == "stop"     then handle("stop")
+    elseif action == "help"     then handle("help")
     end
     gui:drawButtons(nil)
 end
 
--- ── Nav tick (called when timer fires) ───────────────────────
+-- ── Nav tick ──────────────────────────────────────────────────
 local function nav_tick()
     local now     = os.clock()
     local elapsed = now - last_nav_t
@@ -253,37 +283,37 @@ local function nav_tick()
 
     tick_count = tick_count + 1
     if tick_count % RENDER_EVERY == 0 then
-        local s       = safe_status()
-        local wps, wi = safe_waypoints()
-        gui:render(s, wps, wi)
+        local st = safe_status()
+        -- Build pseudo waypoints list for status panel
+        local wps = {}
+        if nav and nav.mode == "GOTO" then
+            wps = {{ x = nav.wp_dx, y = nav.target_alt or 0, z = nav.wp_dz }}
+        end
+        gui:render(st, wps, 1)
     end
 
     nav_timer = os.startTimer(dt)
 end
 
--- ── Single event loop ─────────────────────────────────────────
--- Draw initial state
+-- ── Initial render ────────────────────────────────────────────
 do
-    local s = safe_status()
-    local wps, wi = safe_waypoints()
-    gui:render(s, wps, wi)
+    local st = safe_status()
+    gui:render(st, {}, 1)
     gui:drawInput()
 end
 
+-- ── Event loop ────────────────────────────────────────────────
 while running do
     local ev, p1, p2, p3 = os.pullEvent()
 
     if ev == "timer" and p1 == nav_timer then
-        -- Nav update only fires here; dialog blocks this branch naturally
-        -- because dialog has its own os.pullEvent() loop that consumes events
         nav_tick()
 
     elseif ev == "mouse_click" then
-        local btn_action = gui:hitButton(p2, p3)
-        if btn_action then
-            gui:drawButtons(btn_action)
-            on_button(btn_action)  -- dialog() runs synchronously here
-            -- dialog may have consumed the nav_timer event; restart it
+        local btn = gui:hitButton(p2, p3)
+        if btn then
+            gui:drawButtons(btn)
+            on_button(btn)
             nav_timer = os.startTimer(dt)
         end
 
@@ -325,8 +355,7 @@ end
 
 -- ── Cleanup ───────────────────────────────────────────────────
 if nav then pcall(function() nav:stop() end) end
-term.clear()
-term.setCursorPos(1, 1)
+term.clear(); term.setCursorPos(1,1)
 term.setTextColor(colors.white)
 term.setBackgroundColor(colors.black)
-print("Autopilot exited. Thrust cleared.")
+print("Autopilot exited. All redstone outputs cleared.")

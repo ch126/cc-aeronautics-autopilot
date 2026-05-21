@@ -1,360 +1,279 @@
 -- =============================================================
---  autopilot/nav.lua
+--  autopilot/nav.lua  (Create:Aeronautics Simulated Project)
 --
---  Control modes (auto-detected by peripheral capability):
+--  Reads sensors, runs PID, outputs redstone analog signals.
 --
---  MODE A: Direct Velocity  (preferred)
---    helm.setVelocity(vx, vy, vz)  +  helm.setYawTarget(deg)
---    Nav computes desired world-space velocity from position error.
---    No PID tuning required.
+--  Control axes:
+--    ALTITUDE  : PID(target_alt, alt_sensor) -> rs analog on SIDE_THRUST_U/D
+--    SPEED     : PID(target_spd, vel_sensor) -> rs analog on SIDE_THRUST_F/B
+--    HEADING   : P(target_hdg, nav_table)    -> rs analog on SIDE_YAW_L/R
 --
---  MODE B: PID Throttle  (fallback)
---    helm.setThrottle / setSpeed / setSail  (local-frame throttle)
---    PID drives position error -> throttle output.
---
---  Position / velocity / yaw are always read from the helm peripheral.
+--  Flight modes:
+--    IDLE     - all outputs zero
+--    HOVER    - hold altitude, zero target speed
+--    FLY      - hold altitude + heading + speed
+--    GOTO     - dead-reckoning waypoint (heading + speed until dist reached)
+--    MANUAL   - raw rs output controlled by caller (main.lua)
 -- =============================================================
 
-local Vec3     = require("autopilot.vec3")
-local PIDMod   = require("autopilot.pid")
-local Obstacle = require("autopilot.obstacle")
-local Config   = require("autopilot.config")
+local PIDMod  = require("autopilot.pid")
+local Sensors = require("autopilot.sensors")
+local Config  = require("autopilot.config")
 
 local Nav = {}
 Nav.__index = Nav
 
-Nav.STATE = {
-    IDLE       = "IDLE",
-    NAVIGATING = "NAVIGATING",
-    AVOIDING   = "AVOIDING",
-    ARRIVED    = "ARRIVED",
-    ERROR      = "ERROR",
+Nav.MODE = {
+    IDLE   = "IDLE",
+    HOVER  = "HOVER",
+    FLY    = "FLY",
+    GOTO   = "GOTO",
+    MANUAL = "MANUAL",
 }
 
--- ── Peripheral auto-detect ────────────────────────────────────
-local function findHelm()
-    if Config.HELM_SIDE then
-        local p = peripheral.wrap(Config.HELM_SIDE)
-        if p then return p, Config.HELM_SIDE end
-    end
-
-    local knownTypes = {
-        "create_aeronautics:airship_helm",
-        "create_aeronautics:tilt_airship_helm",
-        "create_aeronautics:helm",
-        "airshipHelm",
-        "airship_helm",
-        "Aeronautics_AirshipHelm",
-    }
-    for _, t in ipairs(knownTypes) do
-        local p = peripheral.find(t)
-        if p then return p, t end
-    end
-
-    -- Duck-type scan: need at least getPosition + some control method
-    local needs_pos   = { "getPosition" }
-    local ctrl_sets   = {
-        { "setVelocity" },
-        { "setSpeed" },
-        { "setThrottle" },
-        { "setSail" },
-    }
-    for _, name in ipairs(peripheral.getNames()) do
-        local p = peripheral.wrap(name)
-        if p and type(p.getPosition) == "function" then
-            for _, cs in ipairs(ctrl_sets) do
-                local ok = true
-                for _, m in ipairs(cs) do
-                    if type(p[m]) ~= "function" then ok = false; break end
-                end
-                if ok then return p, name end
-            end
-        end
-    end
-
-    return nil, nil
+-- ── Redstone helper ───────────────────────────────────────────
+-- power: 0.0-1.0 float -> mapped to 0-RS_MAX integer
+local function rsSet(side, power)
+    if not side then return end
+    local v = math.floor(math.max(0, math.min(1, power)) * Config.RS_MAX + 0.5)
+    rs.setAnalogOutput(side, v)
 end
+
+local function rsOff(side)
+    if not side then return end
+    rs.setAnalogOutput(side, 0)
+end
+
+local function normalizeAngle(a)
+    a = a % 360
+    if a > 180 then a = a - 360 end
+    return a
+end
+
+local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 
 -- ── Constructor ───────────────────────────────────────────────
 function Nav.new()
-    local helm, helmName = findHelm()
+    local sens = Sensors.new()
 
-    if not helm then
-        local names = peripheral.getNames()
-        local list  = #names > 0 and table.concat(names, ", ") or "(none)"
-        error("[NAV] Airship controller not found!\n"
-            .. "Available peripherals: " .. list .. "\n"
-            .. "Fix:\n"
-            .. "  1. Assemble ship (right-click Helm)\n"
-            .. "  2. Place computer ON ship structure\n"
-            .. "  3. Connect via Wired Modem + cable, or place adjacent\n"
-            .. "  4. Set Config.HELM_SIDE in config.lua if needed")
-    end
+    local pid_alt = PIDMod.PID.new(Config.PID_ALT)
+    local pid_spd = PIDMod.PID.new(Config.PID_SPD)
+    local pid_hdg = PIDMod.PID.new(Config.PID_HDG)
 
-    -- Determine control mode
-    local ctrlMode   -- "velocity" | "throttle"
-    local helmAPI    = {}
+    local self = setmetatable({
+        sensors   = sens,
+        pid_alt   = pid_alt,
+        pid_spd   = pid_spd,
+        pid_hdg   = pid_hdg,
 
-    if type(helm.setVelocity) == "function" then
-        -- ── MODE A: Direct velocity ────────────────────────────
-        ctrlMode = "velocity"
-        helmAPI.setVelocity = function(vx, vy, vz)
-            pcall(helm.setVelocity, vx, vy, vz)
-        end
-        helmAPI.setThrottle = function() end  -- no-op
-    elseif type(helm.setSpeed) == "function" then
-        ctrlMode = "throttle"
-        helmAPI.setThrottle = function(f, u, r)
-            pcall(helm.setSpeed, f, u, r)
-        end
-    elseif type(helm.setThrottle) == "function" then
-        ctrlMode = "throttle"
-        helmAPI.setThrottle = function(f, u, r)
-            pcall(helm.setThrottle, f, u, r)
-        end
-    elseif type(helm.setSail) == "function" then
-        ctrlMode = "throttle"
-        helmAPI.setThrottle = function(f, u, r)
-            pcall(helm.setSail, f, u, r)
-        end
-    else
-        ctrlMode = "none"
-        helmAPI.setThrottle = function() end
-    end
+        mode      = Nav.MODE.IDLE,
+        msg       = "Standby | " .. sens:status(),
 
-    helmAPI.getPosition  = helm.getPosition
-    helmAPI.getVelocity  = helm.getVelocity  or function() return {x=0,y=0,z=0} end
-    helmAPI.getYaw       = helm.getYaw       or function() return 0 end
-    helmAPI.setYawTarget = helm.setYawTarget or function() end
-    helmAPI._name        = helmName
-    helmAPI._mode        = ctrlMode
+        -- Setpoints
+        target_alt = nil,    -- meters (world Y)
+        target_spd = 0.0,    -- m/s
+        target_hdg = nil,    -- degrees (0=north)
 
-    local pid3 = PIDMod.PID3.new(Config.PID_H, Config.PID_V)
-    local pidY = PIDMod.PID.new(Config.PID_YAW)
-    local obs  = Obstacle.new(
-        Config.HAS_RADAR and peripheral.find(Config.RADAR_NAME) or nil)
+        -- GOTO waypoint (dead-reckoning, relative coords)
+        wp_dx      = 0.0,
+        wp_dz      = 0.0,
+        wp_dist    = 0.0,
 
-    return setmetatable({
-        helm        = helmAPI,
-        ctrl_mode   = ctrlMode,
-        pid3        = pid3,
-        pid_yaw     = pidY,
-        obstacle    = obs,
-
-        waypoints   = {},
-        wp_index    = 1,
-
-        state       = Nav.STATE.IDLE,
-        status_msg  = "Standby [mode:" .. ctrlMode .. "]",
-
-        pos         = Vec3.new(0,0,0),
-        velocity    = Vec3.new(0,0,0),
-        yaw         = 0.0,
-        tick        = 0,
-
-        total_dist  = 0.0,
-        elapsed_sec = 0.0,
+        elapsed    = 0.0,
     }, Nav)
+
+    -- Do an initial sensor read to populate altitude/heading
+    self.sensors:read(0)
+    return self
 end
 
--- ── Waypoint management ───────────────────────────────────────
-function Nav:addWaypoint(x, y, z)
-    table.insert(self.waypoints, Vec3.new(x, y, z))
+-- ── Public setters ────────────────────────────────────────────
+function Nav:setAltitude(y)
+    self.target_alt = y
+    self.pid_alt:reset()
+    self.msg = string.format("Alt target: %.1f m", y)
 end
 
-function Nav:clearWaypoints()
-    self.waypoints = {}
-    self.wp_index  = 1
-    self:_stop()
-    self.state      = Nav.STATE.IDLE
-    self.status_msg = "Waypoints cleared"
+function Nav:setSpeed(s)
+    self.target_spd = math.max(0, s)
+    self.pid_spd:reset()
 end
 
-function Nav:start()
-    if #self.waypoints == 0 then
-        self.status_msg = "Error: no waypoints"
-        self.state      = Nav.STATE.ERROR
-        return
-    end
-    self.wp_index = 1
-    self.pid3:reset()
-    self.pid_yaw:reset()
-    self.state      = Nav.STATE.NAVIGATING
-    self.status_msg = string.format("Navigating WP 1/%d [%s]",
-        #self.waypoints, self.ctrl_mode)
+function Nav:setHeading(h)
+    self.target_hdg = h % 360
+    self.pid_hdg:reset()
+    self.msg = string.format("Heading target: %.1f deg", h)
+end
+
+function Nav:hover()
+    self:setAltitude(self.sensors.altitude)
+    self:setSpeed(0)
+    self.target_hdg = self.sensors.heading
+    self.pid_alt:reset(); self.pid_spd:reset(); self.pid_hdg:reset()
+    self.mode = Nav.MODE.HOVER
+    self.msg  = string.format("Hover at Y=%.1f", self.sensors.altitude)
+end
+
+function Nav:fly(alt, hdg, spd)
+    self.target_alt = alt or self.sensors.altitude
+    self.target_hdg = (hdg or self.sensors.heading) % 360
+    self.target_spd = spd or Config.MAX_SPEED
+    self.pid_alt:reset(); self.pid_spd:reset(); self.pid_hdg:reset()
+    self.mode = Nav.MODE.FLY
+    self.msg  = string.format("Fly alt=%.0f hdg=%.0f spd=%.1f",
+        self.target_alt, self.target_hdg, self.target_spd)
+end
+
+-- Relative waypoint (dead-reckoning): dx=east, dz=south in blocks
+function Nav:goto_rel(dx, dz, alt)
+    self.sensors:resetDR()
+    self.wp_dx   = dx
+    self.wp_dz   = dz
+    self.wp_dist = math.sqrt(dx*dx + dz*dz)
+    self.target_alt = alt or self.sensors.altitude
+    self.target_spd = math.min(Config.MAX_SPEED, self.wp_dist / 3)
+    -- Heading towards target: atan2(dx, -dz) since north=-Z
+    self.target_hdg = (math.deg(math.atan(dx, -dz))) % 360
+    self.pid_alt:reset(); self.pid_spd:reset(); self.pid_hdg:reset()
+    self.mode = Nav.MODE.GOTO
+    self.msg  = string.format("Goto dX=%.0f dZ=%.0f alt=%.0f", dx, dz, self.target_alt)
 end
 
 function Nav:stop()
-    self:_stop()
-    self.state      = Nav.STATE.IDLE
-    self.status_msg = "Stopped"
+    self:_allStop()
+    self.mode = Nav.MODE.IDLE
+    self.msg  = "Stopped"
 end
 
 -- ── Update (called every tick) ────────────────────────────────
 function Nav:update(dt)
-    self.tick        = self.tick + 1
-    self.elapsed_sec = self.elapsed_sec + dt
+    self.elapsed = self.elapsed + dt
+    self.sensors:read(dt)
 
-    if self.state ~= Nav.STATE.NAVIGATING
-    and self.state ~= Nav.STATE.AVOIDING then
+    if self.mode == Nav.MODE.IDLE or self.mode == Nav.MODE.MANUAL then
         return
     end
 
-    self:_readState()
-
-    local target = self.waypoints[self.wp_index]
-    if not target then
-        self:_stop()
-        self.state      = Nav.STATE.ARRIVED
-        self.status_msg = "All waypoints reached!"
-        return
-    end
-
-    local dist = (self.pos - target):length()
-    if dist <= Config.ARRIVAL_RADIUS then
-        self.wp_index = self.wp_index + 1
-        if self.wp_index > #self.waypoints then
-            self:_stop()
-            self.state      = Nav.STATE.ARRIVED
-            self.status_msg = string.format("Arrived! ODO=%.1f blk  t=%.1f s",
-                self.total_dist, self.elapsed_sec)
-        else
-            self.status_msg = string.format("WP reached, going %d/%d",
-                self.wp_index, #self.waypoints)
-            self.pid3:reset(); self.pid_yaw:reset()
+    -- Check GOTO arrival
+    if self.mode == Nav.MODE.GOTO then
+        local rem_x = self.wp_dx - self.sensors.dr_x
+        local rem_z = self.wp_dz - self.sensors.dr_z
+        local rem   = math.sqrt(rem_x*rem_x + rem_z*rem_z)
+        if rem <= Config.ARRIVAL_RADIUS then
+            self:hover()
+            self.msg = string.format("Arrived! (DR err ~%.0f blk)", rem)
+            return
         end
-        return
+        -- Re-steer towards remaining vector
+        self.target_hdg = (math.deg(math.atan(rem_x, -rem_z))) % 360
+        -- Slow down near end
+        self.target_spd = clamp(rem / 3, 0.5, Config.MAX_SPEED)
+        self.msg = string.format("Goto rem=%.0f blk  hdg=%.0f", rem, self.target_hdg)
     end
 
-    local vtarget, has_obs = self.obstacle:compute(self.pos, target, self.tick)
-    if has_obs then
-        self.state      = Nav.STATE.AVOIDING
-        self.status_msg = string.format("Avoiding -> WP%d dist=%.1f", self.wp_index, dist)
+    self:_controlStep(dt)
+end
+
+-- ── Control step ─────────────────────────────────────────────
+function Nav:_controlStep(dt)
+    local s = self.sensors
+
+    -- ── Altitude ──────────────────────────────────────────────
+    if self.target_alt then
+        local alt_err = self.target_alt - s.altitude
+        local lift    = self.pid_alt:compute(self.target_alt, s.altitude, dt)
+        -- lift > 0 -> go up, lift < 0 -> go down
+        if lift >= 0 then
+            rsSet(Config.SIDE_THRUST_U, lift / Config.RS_MAX)
+            rsOff(Config.SIDE_THRUST_D)
+        else
+            rsOff(Config.SIDE_THRUST_U)
+            rsSet(Config.SIDE_THRUST_D, (-lift) / Config.RS_MAX)
+        end
     else
-        self.state      = Nav.STATE.NAVIGATING
-        self.status_msg = string.format("WP%d/%d dist=%.1f [%s]",
-            self.wp_index, #self.waypoints, dist, self.ctrl_mode)
+        rsOff(Config.SIDE_THRUST_U)
+        rsOff(Config.SIDE_THRUST_D)
     end
 
-    if self.ctrl_mode == "velocity" then
-        self:_controlVelocity(vtarget, dt)
+    -- ── Heading ───────────────────────────────────────────────
+    local hdg_ok = true
+    if self.target_hdg then
+        local hdg_err = normalizeAngle(self.target_hdg - s.heading)
+        local yaw_out = clamp(self.pid_hdg:compute(0, -hdg_err, dt), -1, 1)
+        -- yaw_out > 0 -> turn right, < 0 -> turn left
+        if yaw_out >= 0 then
+            rsSet(Config.SIDE_YAW_R, yaw_out)
+            rsOff(Config.SIDE_YAW_L)
+        else
+            rsOff(Config.SIDE_YAW_R)
+            rsSet(Config.SIDE_YAW_L, -yaw_out)
+        end
+        hdg_ok = math.abs(hdg_err) < Config.YAW_THRESHOLD
     else
-        self:_controlThrottle(vtarget, dt)
+        rsOff(Config.SIDE_YAW_L)
+        rsOff(Config.SIDE_YAW_R)
     end
 
-    if self._last_pos then
-        self.total_dist = self.total_dist + (self.pos - self._last_pos):length()
-    end
-    self._last_pos = self.pos:clone()
-end
-
--- ── State read ────────────────────────────────────────────────
-function Nav:_readState()
-    local ok, p = pcall(self.helm.getPosition)
-    if ok and p then self.pos = Vec3.new(p.x, p.y, p.z) end
-
-    local ok2, v = pcall(self.helm.getVelocity)
-    if ok2 and v then self.velocity = Vec3.new(v.x, v.y, v.z) end
-
-    local ok3, y = pcall(self.helm.getYaw)
-    if ok3 and y then self.yaw = y end
-end
-
--- ── MODE A: Direct velocity control ──────────────────────────
--- Computes desired world-space velocity proportional to position error.
--- No PID needed — just a P-gain on position, clamped to max speed.
-function Nav:_controlVelocity(vtarget, dt)
-    local cfg    = Config
-    local err    = vtarget - self.pos   -- world-space error vector
-
-    -- Proportional: desired_velocity = Kp * error, clamped to MAX_SPEED
-    local Kp       = cfg.VEL_KP or 0.5
-    local max_spd  = cfg.MAX_SPEED or 10.0
-    local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
-
-    local vx = clamp(err.x * Kp, -max_spd, max_spd)
-    local vy = clamp(err.y * Kp, -max_spd, max_spd)
-    local vz = clamp(err.z * Kp, -max_spd, max_spd)
-
-    -- Slow down near arrival
-    local dist = err:length()
-    if dist < cfg.ARRIVAL_RADIUS * 3 then
-        local factor = dist / (cfg.ARRIVAL_RADIUS * 3)
-        vx = vx * factor
-        vy = vy * factor
-        vz = vz * factor
-    end
-
-    self.helm.setVelocity(vx, vy, vz)
-
-    -- Yaw: face direction of travel (or target if nearly arrived)
-    local desired_yaw = self.pos:yawTo(vtarget)
-    pcall(self.helm.setYawTarget, desired_yaw)
-end
-
--- ── MODE B: PID throttle control ─────────────────────────────
-function Nav:_controlThrottle(vtarget, dt)
-    local cfg = Config
-    local pos = self.pos
-
-    local desired_yaw = pos:yawTo(vtarget)
-    local yaw_err     = Vec3.normalizeAngle(desired_yaw - self.yaw)
-    local abs_yaw_err = math.abs(yaw_err)
-    local heading_ok  = abs_yaw_err < cfg.HEADING_THRESHOLD
-
-    pcall(self.helm.setYawTarget, desired_yaw)
-
-    local ctrl = self.pid3:compute(
-        { x=vtarget.x, y=vtarget.y, z=vtarget.z },
-        { x=pos.x,     y=pos.y,     z=pos.z     },
-        dt)
-
-    local yaw_rad = math.rad(self.yaw)
-    local fwd   =  ctrl.x * math.sin(yaw_rad) + ctrl.z * (-math.cos(yaw_rad))
-    local right =  ctrl.x * math.cos(yaw_rad) + ctrl.z * math.sin(yaw_rad)
-    local up    =  ctrl.y
-
-    local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
-    fwd   = clamp(fwd,   -cfg.MAX_THROTTLE, cfg.MAX_THROTTLE)
-    right = clamp(right, -cfg.MAX_THROTTLE, cfg.MAX_THROTTLE)
-    up    = clamp(up,    -cfg.MAX_THROTTLE, cfg.MAX_THROTTLE)
-
-    if not heading_ok then
-        local factor = 1.0 - math.min(1.0, abs_yaw_err / 45.0)
-        fwd   = fwd   * factor
-        right = right * factor
-    end
-
-    self.helm.setThrottle(fwd, up, right)
-end
-
--- ── Stop ─────────────────────────────────────────────────────
-function Nav:_stop()
-    if self.ctrl_mode == "velocity" then
-        pcall(self.helm.setVelocity, 0, 0, 0)
+    -- ── Forward speed ─────────────────────────────────────────
+    -- Only thrust forward if heading is roughly correct
+    if self.mode ~= Nav.MODE.HOVER and hdg_ok then
+        local spd_out = self.pid_spd:compute(self.target_spd, s.speed, dt)
+        if spd_out >= 0 then
+            rsSet(Config.SIDE_THRUST_F, spd_out / Config.RS_MAX)
+            rsOff(Config.SIDE_THRUST_B)
+        else
+            rsOff(Config.SIDE_THRUST_F)
+            rsSet(Config.SIDE_THRUST_B, (-spd_out) / Config.RS_MAX)
+        end
     else
-        pcall(self.helm.setThrottle, 0, 0, 0)
+        -- HOVER or not aligned: kill forward thrust
+        rsOff(Config.SIDE_THRUST_F)
+        rsOff(Config.SIDE_THRUST_B)
     end
-    self.pid3:reset()
-    self.pid_yaw:reset()
 end
 
--- ── Status ────────────────────────────────────────────────────
+-- ── All stop ──────────────────────────────────────────────────
+function Nav:_allStop()
+    rsOff(Config.SIDE_THRUST_F)
+    rsOff(Config.SIDE_THRUST_B)
+    rsOff(Config.SIDE_THRUST_U)
+    rsOff(Config.SIDE_THRUST_D)
+    rsOff(Config.SIDE_YAW_L)
+    rsOff(Config.SIDE_YAW_R)
+    self.pid_alt:reset()
+    self.pid_spd:reset()
+    self.pid_hdg:reset()
+end
+
+-- Manual direct redstone output (0-1 floats, called from main.lua)
+function Nav:manualSet(fwd, back, up, down, yaw_l, yaw_r)
+    rsSet(Config.SIDE_THRUST_F, fwd   or 0)
+    rsSet(Config.SIDE_THRUST_B, back  or 0)
+    rsSet(Config.SIDE_THRUST_U, up    or 0)
+    rsSet(Config.SIDE_THRUST_D, down  or 0)
+    rsSet(Config.SIDE_YAW_L,    yaw_l or 0)
+    rsSet(Config.SIDE_YAW_R,    yaw_r or 0)
+end
+
+-- ── Status for GUI ────────────────────────────────────────────
 function Nav:getStatus()
+    local s = self.sensors
     return {
-        state      = self.state,
-        msg        = self.status_msg,
-        pos        = self.pos,
-        yaw        = self.yaw,
-        velocity   = self.velocity,
-        wp_current = self.wp_index,
-        wp_total   = #self.waypoints,
-        target     = self.waypoints[self.wp_index],
-        dist       = self.waypoints[self.wp_index]
-                     and (self.pos - self.waypoints[self.wp_index]):length()
-                     or  0,
-        total_dist = self.total_dist,
-        elapsed    = self.elapsed_sec,
+        mode     = self.mode,
+        msg      = self.msg,
+        altitude = s.altitude,
+        speed    = s.speed,
+        heading  = s.heading,
+        pitch    = s.pitch,
+        roll     = s.roll,
+        dr_x     = s.dr_x,
+        dr_z     = s.dr_z,
+        elapsed  = self.elapsed,
+        sensors  = s:status(),
+        -- setpoints
+        tgt_alt  = self.target_alt,
+        tgt_spd  = self.target_spd,
+        tgt_hdg  = self.target_hdg,
     }
 end
 

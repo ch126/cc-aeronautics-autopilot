@@ -17,9 +17,8 @@ local BASE_URL = "https://raw.githubusercontent.com/ch126/cc-aeronautics-autopil
 
 local FILES = {
     "autopilot/config.lua",
-    "autopilot/vec3.lua",
     "autopilot/pid.lua",
-    "autopilot/obstacle.lua",
+    "autopilot/sensors.lua",
     "autopilot/nav.lua",
     "autopilot/gui.lua",
     "autopilot/main.lua",

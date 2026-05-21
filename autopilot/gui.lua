@@ -284,19 +284,21 @@ end
 
 
 local STATE_COLOR = {
-    IDLE      = TH.state_idle,
-    NAVIGATING= TH.state_nav,
-    AVOIDING  = TH.state_avoid,
-    ARRIVED   = TH.state_arr,
-    ERROR     = TH.state_err,
+    IDLE   = TH.state_idle,
+    HOVER  = TH.state_nav,
+    FLY    = TH.state_nav,
+    GOTO   = TH.state_nav,
+    MANUAL = TH.state_avoid,
+    ERROR  = TH.state_err,
 }
 
 local STATE_ICON = {
-    IDLE      = ".",
-    NAVIGATING= ">",
-    AVOIDING  = "!",
-    ARRIVED   = "+",
-    ERROR     = "x",
+    IDLE   = ".",
+    HOVER  = "^",
+    FLY    = ">",
+    GOTO   = "*",
+    MANUAL = "M",
+    ERROR  = "x",
 }
 
 function GUI:drawStatus(s)
@@ -305,59 +307,61 @@ function GUI:drawStatus(s)
     local function lv(row, label, value, vc)
         local llen = #label
         write_at(t, 2, row, label, TH.label, TH.panel_bg)
-        write_at(t, 2 + llen, row, " "..tostring(value),
-            vc or TH.value, TH.panel_bg)
-
-        local used = 2 + llen + 1 + #tostring(value)
+        local vs = " " .. tostring(value)
+        write_at(t, 2 + llen, row, vs, vc or TH.value, TH.panel_bg)
+        local used = 2 + llen + #vs
         local tail = W - used + 1
         if tail > 0 then
             write_at(t, used + 1, row, string.rep(" ", tail), TH.value, TH.panel_bg)
         end
     end
 
-    local sc = STATE_COLOR[s.state] or TH.value
-    local si = STATE_ICON[s.state]  or "?"
+    local mode = s.mode or "ERROR"
+    local sc = STATE_COLOR[mode] or TH.value
+    local si = STATE_ICON[mode]  or "?"
 
     local r = 2
 
-    local state_str = si .. " " .. s.state
-    lv(r,   "State:  ", state_str, sc)
+    lv(r, "Mode:   ", si .. " " .. mode, sc)
 
     local msg = s.msg or ""
-    if #msg > W - 3 then msg = msg:sub(1, W-6) .. "..." end
+    if #msg > W - 2 then msg = msg:sub(1, W-5) .. "..." end
     write_at(t, 2, r+1, string.rep(" ", W), TH.label, TH.panel_bg)
     write_at(t, 2, r+1, msg, TH.label, TH.panel_bg)
 
-
     write_at(t, 2, r+2, string.rep("-", W-1), TH.panel_border, TH.panel_bg)
 
+    -- Flight data
+    local alt_c = TH.value_hi
+    lv(r+3, "Alt:    ", string.format("%.1f blk%s",
+        s.altitude or 0,
+        s.tgt_alt and string.format("  ->%.0f", s.tgt_alt) or ""), alt_c)
 
-    lv(r+3, "Pos:    ", string.format("X:%-6.1f Y:%-6.1f Z:%-6.1f",
-        s.pos.x, s.pos.y, s.pos.z), TH.value_hi)
+    lv(r+4, "Speed:  ", string.format("%.2f m/s%s",
+        s.speed or 0,
+        s.tgt_spd and s.tgt_spd > 0 and string.format("  ->%.1f", s.tgt_spd) or ""))
 
-    local spd = s.velocity:length()
-    lv(r+4, "Speed:  ", string.format("%.2f m/s (Vx%.1f Vy%.1f Vz%.1f)",
-        spd, s.velocity.x, s.velocity.y, s.velocity.z))
-
-    lv(r+5, "Yaw:    ", string.format("%.1f deg", s.yaw))
-
+    lv(r+5, "Heading:", string.format("%.1f deg%s",
+        s.heading or 0,
+        s.tgt_hdg and string.format("  ->%.0f", s.tgt_hdg) or ""))
 
     write_at(t, 2, r+6, string.rep("-", W-1), TH.panel_border, TH.panel_bg)
 
+    lv(r+7, "Pitch:  ", string.format("%.1f  Roll: %.1f",
+        s.pitch or 0, s.roll or 0))
 
-    if s.target then
-        lv(r+7, "Target: ", string.format("X:%-6.1f Y:%-6.1f Z:%-6.1f",
-            s.target.x, s.target.y, s.target.z), TH.value_hi)
-        lv(r+8, "Dist:   ", string.format("%.1f blk", s.dist))
-    else
-        lv(r+7, "Target: ", "  none  ",  TH.label)
-        lv(r+8, "Dist:   ", "0.0 blk")
-    end
-
+    lv(r+8, "DR pos: ", string.format("dX:%.0f  dZ:%.0f",
+        s.dr_x or 0, s.dr_z or 0), TH.value_hi)
 
     write_at(t, 2, r+9, string.rep("-", W-1), TH.panel_border, TH.panel_bg)
-    lv(r+10, "ODO:    ", string.format("%.1f blk", s.total_dist))
-    lv(r+11, "Time:   ", string.format("%.1fs", s.elapsed))
+
+    -- Sensor status line
+    local sens_str = s.sensors or "--"
+    if #sens_str > W - 2 then sens_str = sens_str:sub(1, W-5) .. "..." end
+    write_at(t, 2, r+10, string.rep(" ", W), TH.label, TH.panel_bg)
+    write_at(t, 2, r+10, sens_str, TH.label, TH.panel_bg)
+
+    lv(r+11, "Time:   ", string.format("%.1fs", s.elapsed or 0))
 end
 
 
