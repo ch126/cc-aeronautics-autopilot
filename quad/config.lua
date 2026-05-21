@@ -93,6 +93,14 @@ C.NAV_POS_ALPHA  = 0.3   -- 导航台位置收敛速度（0.3 = 快速跟踪，�
 --   false（默认）= 直接朝导航台指向飞
 --   true         = 反转180°（导航台返回的是"回家"方向时使用）
 C.NAV_FOLLOW_INVERT = true
+-- navfollow 到达判断：导航台 distanceToTarget() 小于此值时触发降落
+-- 导航台 peripheral 没有 distanceToTarget，用角度判断：
+--   abs(rel_angle) < NAV_FOLLOW_ARRIVE_DEG 持续 NAV_FOLLOW_ARRIVE_TIME 秒
+-- 注意：角度接近0说明目标就在正前方很近处（已经飞过去了）
+-- 若导航台有 getDistance 则优先用距离
+C.NAV_FOLLOW_ARRIVE_DIST = 5.0   -- 到达距离阈值（blocks），需导航台支持 getDistance
+C.NAV_FOLLOW_ARRIVE_DEG  = 20.0  -- 角度阈值（度），|rel|<20且持续一段时间视为到达
+C.NAV_FOLLOW_ARRIVE_TIME = 1.5   -- 持续确认时间（秒），避免飞越时误触发
 
 -- ── 飞行参数 ───────────────────────────────────────────────────
 C.MAX_TILT       = 25.0  -- max tilt angle (deg)

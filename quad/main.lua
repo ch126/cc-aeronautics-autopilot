@@ -40,11 +40,12 @@ local Ctrl = safe_load("/quad/controller.lua")
 local GUI  = safe_load("/quad/gui.lua")
 
 -- globals
-local imu_state = {}
-local running   = true
-local ctrl_dt   = 1 / C.CTRL_HZ
-local nav_dt    = 1 / C.NAV_HZ
-local start_t   = os.clock()
+local imu_state   = {}
+local running     = true
+local ctrl_dt     = 1 / C.CTRL_HZ
+local nav_dt      = 1 / C.NAV_HZ
+local start_t     = os.clock()
+local _nav_landing = false   -- nav_arrived 触发的自动降落标志
 
 local imu   = IMU.new()
 local mixer = Mix.new()
@@ -109,6 +110,15 @@ local function ctrlLoop()
                     gui:log(string.format("Arrived! Holding (%.1f, %.1f)",
                         ctrl.target_x or 0, ctrl.target_z or 0), "OK")
                 end
+                -- navfollow 到达：自动降落
+                if ctrl.nav_arrived then
+                    ctrl.nav_arrived = false
+                    gui:log("Nav arrived! Auto-landing...", "OK")
+                    ctrl.target_alt = 0.3
+                    -- 开一个 coroutine-style 延时降落（直接在 ctrlLoop 里 sleep 会阻塞整个环）
+                    -- 改为设置标志，让 inputLoop 里单独处理
+                    _nav_landing = true
+                end
             end
             local po, ro, yo = ctrl:updateInner(imu_state, dt)
             mixer:mix(ctrl.throttle_out or C.RPM_HOVER, po, ro, yo)
@@ -131,10 +141,19 @@ local function renderLoop()
     end
 end
 
--- GPS loop ~1Hz (独立循环，避免阻塞控制环)
+-- GPS loop ~5Hz + 自动降落监控
 local function gpsLoop()
     while running do
         imu:readGPS()
+        -- nav_arrived 触发的自动降落：等高度下降后 disarm
+        if _nav_landing and ctrl.armed then
+            if (imu_state.altitude or 99) <= 0.5 then
+                os.sleep(0.5)
+                ctrl:disarm()
+                _nav_landing = false
+                gui:log("Landed and disarmed.", "OK")
+            end
+        end
         os.sleep(0.2)   -- 5Hz GPS 更新，gps.locate(0.1) 本身占 0.1s
     end
 end

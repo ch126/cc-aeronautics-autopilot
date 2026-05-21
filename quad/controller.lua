@@ -103,10 +103,35 @@ function Ctrl:updateOuter(imu_state, dt)
     -- nav_follow_speed 不为 nil 时，忽略 target_x/z，
     -- 按导航台指向以固定速度飞行（yaw=0 为参考方向，rel 为机头相对偏角）
     if self.nav_follow_speed and imu_state.nav_rel ~= nil then
-        local rel_rad     = math.rad(imu_state.nav_rel)
-        local yaw_rad     = math.rad(imu_state.yaw or 0)
-        local world_bear  = yaw_rad + rel_rad
+        local rel      = imu_state.nav_rel
+        local rel_rad  = math.rad(rel)
+        local yaw_rad  = math.rad(imu_state.yaw or 0)
+        local world_bear = yaw_rad + rel_rad
         if C.NAV_FOLLOW_INVERT then world_bear = world_bear + math.pi end
+
+        -- ── 到达检测 ────────────────────────────────────────────
+        -- 飞向目标时 nav_rel ≈ 180°（home在身后）
+        -- 飞越目标后 nav_rel 翻转到 ≈ 0°（home转到身前）
+        -- 检测：|nav_rel| < ARRIVE_DEG 且之前已经 > 90°（排除起飞初始状态）
+        local abs_rel = math.abs(rel)
+        if abs_rel > 170 then
+            self._nav_was_behind = true   -- 确认曾经"home在身后"
+        end
+        local arrive_deg = C.NAV_FOLLOW_ARRIVE_DEG or 20
+        if self._nav_was_behind and abs_rel < arrive_deg then
+            -- 开始持续计时
+            self._nav_arrive_acc = (self._nav_arrive_acc or 0) + (C.NAV_DT or 0.05)
+        else
+            self._nav_arrive_acc = 0
+        end
+        local arrive_time = C.NAV_FOLLOW_ARRIVE_TIME or 1.5
+        if (self._nav_arrive_acc or 0) >= arrive_time then
+            -- 到达！触发自动降落
+            self.nav_follow_speed = nil
+            self._nav_was_behind  = false
+            self._nav_arrive_acc  = 0
+            self.nav_arrived      = true   -- 供 main.lua 触发降落
+        end
         local spd         = self.nav_follow_speed
         local target_vx   = spd * math.sin(world_bear)
         local target_vz   = spd * math.cos(world_bear)
@@ -233,9 +258,12 @@ function Ctrl:arm(alt, yaw)
     self._alt_i       = 0
     self._pos_ix      = 0
     self._pos_iz      = 0
-    self._goto_active = false
-    self.arrived      = false
+    self._goto_active     = false
+    self.arrived          = false
     self.nav_follow_speed = nil
+    self._nav_was_behind  = false
+    self._nav_arrive_acc  = 0
+    self.nav_arrived      = false
     -- reset all integrators
     for _, p in ipairs({
         self.att_p,  self.att_q,  self.att_r,
