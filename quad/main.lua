@@ -246,6 +246,15 @@ local function handle_cmd(line)
                 d.ex or 0, d.ez or 0, d.tvx or 0, d.tvz or 0,
                 d.rp or 0, d.rr or 0, d.ix or 0, d.iz or 0), "INFO")
         end
+        -- navfollow 到达进度
+        if ctrl.nav_follow_speed then
+            local da = ctrl.dbg_arrive
+            if da then
+                gui:log(string.format(
+                    "navfollow: rel=%.1f was_behind=%s arrive=%.2f/%.2f",
+                    da.rel, tostring(da.was_behind), da.acc, da.need), "INFO")
+            end
+        end
     elseif cmd == "motors" then
         local r = mixer.rpm or {0,0,0,0}
         local rf = mixer.rpm_filt or {0,0,0,0}

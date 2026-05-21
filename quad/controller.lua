@@ -110,45 +110,55 @@ function Ctrl:updateOuter(imu_state, dt)
         if C.NAV_FOLLOW_INVERT then world_bear = world_bear + math.pi end
 
         -- ── 到达检测 ────────────────────────────────────────────
-        -- 飞向目标时 nav_rel ≈ 180°（home在身后）
+        -- 飞向目标时 nav_rel ≈ 180°（home在身后，invert时正飞向目标）
         -- 飞越目标后 nav_rel 翻转到 ≈ 0°（home转到身前）
-        -- 检测：|nav_rel| < ARRIVE_DEG 且之前已经 > 90°（排除起飞初始状态）
         local abs_rel = math.abs(rel)
-        if abs_rel > 170 then
+        if abs_rel > 150 then
             self._nav_was_behind = true   -- 确认曾经"home在身后"
         end
         local arrive_deg = C.NAV_FOLLOW_ARRIVE_DEG or 20
         if self._nav_was_behind and abs_rel < arrive_deg then
-            -- 开始持续计时
-            self._nav_arrive_acc = (self._nav_arrive_acc or 0) + (C.NAV_DT or 0.05)
+            self._nav_arrive_acc = (self._nav_arrive_acc or 0) + dt  -- 用真实 dt
         else
             self._nav_arrive_acc = 0
         end
+
+        -- 调试：暴露到达累计时间
+        self.dbg_arrive = {
+            rel=rel, was_behind=self._nav_was_behind,
+            acc=self._nav_arrive_acc or 0,
+            need=C.NAV_FOLLOW_ARRIVE_TIME or 1.5,
+        }
+
         local arrive_time = C.NAV_FOLLOW_ARRIVE_TIME or 1.5
         if (self._nav_arrive_acc or 0) >= arrive_time then
-            -- 到达！触发自动降落
+            -- 到达！停止飞行，触发降落
             self.nav_follow_speed = nil
             self._nav_was_behind  = false
             self._nav_arrive_acc  = 0
             self.nav_arrived      = true   -- 供 main.lua 触发降落
+            -- 直接停在当前位置（速度阻尼），不再计算飞行指令
+            raw_pitch = 0
+            raw_roll  = 0
+        else
+            local spd       = self.nav_follow_speed
+            local target_vx = spd * math.sin(world_bear)
+            local target_vz = spd * math.cos(world_bear)
+            local dvx   = target_vx - vx
+            local dvz   = target_vz - vz
+            local dvx_b =  cy * dvx + sy * dvz
+            local dvz_b = -sy * dvx + cy * dvz
+            raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+            raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
+            self.dbg = {
+                ex=0, ez=0, dist=0,
+                tvx=target_vx, tvz=target_vz,
+                dvx_b=dvx_b, dvz_b=dvz_b,
+                rp=raw_pitch, rr=raw_roll,
+                ix=0, iz=0,
+                nav_rel=rel,
+            }
         end
-        local spd         = self.nav_follow_speed
-        local target_vx   = spd * math.sin(world_bear)
-        local target_vz   = spd * math.cos(world_bear)
-        local dvx   = target_vx - vx
-        local dvz   = target_vz - vz
-        local dvx_b =  cy * dvx + sy * dvz
-        local dvz_b = -sy * dvx + cy * dvz
-        raw_pitch = clamp(-dvx_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-        raw_roll  = clamp(-dvz_b * C.VEL_GAIN, -C.ATT_MAX, C.ATT_MAX)
-        self.dbg = {
-            ex=0, ez=0, dist=0,
-            tvx=target_vx, tvz=target_vz,
-            dvx_b=dvx_b, dvz_b=dvz_b,
-            rp=raw_pitch, rr=raw_roll,
-            ix=0, iz=0,
-            nav_rel=imu_state.nav_rel,
-        }
     elseif self.target_x and imu_state.x then
         local ex = self.target_x - imu_state.x
         local ez = self.target_z - imu_state.z
