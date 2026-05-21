@@ -123,8 +123,8 @@ C.PID_RATE_YAW   = { kp=0.25, ki=0.0,  kd=0.0,  imax=0,  omax=10 }
 -- 直接输出除以 RATE_MAX 得到 -1..1，不再走 rate loop
 -- kd 作用于测量值（D-on-measurement），等效于角速度阻尼
 -- dmax 限制D项最大贡献，防止噪声脉冲引起大幅转速差
-C.PID_ATT_PITCH  = { kp=20.0, ki=0.0,  kd=6.0,  dmax=45, imax=0,  omax=120 }
-C.PID_ATT_ROLL   = { kp=20.0, ki=0.0,  kd=6.0,  dmax=45, imax=0,  omax=120 }
+C.PID_ATT_PITCH  = { kp=35.0, ki=0.0,  kd=6.0,  dmax=45, imax=0,  omax=120 }
+C.PID_ATT_ROLL   = { kp=35.0, ki=0.0,  kd=6.0,  dmax=45, imax=0,  omax=120 }
 C.PID_ATT_YAW    = { kp=15.0, ki=0.1,  kd=2.5,  dmax=25, imax=30, omax=90  }
 
 -- ── 高度级联参数 ───────────────────────────────────────────────
