@@ -239,6 +239,35 @@ local function handle_cmd(line)
         else
             gui:log("Arm first", "WARN")
         end
+    elseif cmd == "gpstest" then
+        -- 诊断 GPS 定位问题：列出 modem 并执行较长超时的 gps.locate()
+        gui:log("=== GPS DIAG ===", "INFO")
+        -- 列出所有 modem
+        local found_wireless = false
+        peripheral.find("modem", function(name, m)
+            local wl = m.isWireless and m.isWireless() or false
+            local ch = wl and (m.isOpen and m.isOpen(65534)) or false
+            gui:log(string.format("modem %s wireless=%s ch65534=%s", name, tostring(wl), tostring(ch)), "INFO")
+            if wl then
+                found_wireless = true
+                if not ch then
+                    m.open(65534)
+                    gui:log("  -> opened ch 65534", "WARN")
+                end
+            end
+        end)
+        if not found_wireless then
+            gui:log("NO wireless modem found!", "WARN")
+        end
+        -- 尝试定位（2秒超时，更宽松）
+        gui:log("Locating (2s timeout)...", "INFO")
+        local wx, wy, wz = gps.locate(2)
+        if wx then
+            gui:log(string.format("GPS OK: %.1f, %.1f, %.1f", wx, wy, wz), "OK")
+        else
+            gui:log("GPS FAIL: returned nil", "WARN")
+            gui:log("需要在世界中放置 >=3 个 GPS 主机电脑并运行 gps host", "WARN")
+        end
     elseif cmd == "land" then
         gui:log("Landing...", "WARN")
         ctrl.target_alt = 0.3
