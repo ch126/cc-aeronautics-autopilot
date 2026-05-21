@@ -79,6 +79,14 @@ function IMU.new()
     self._prev = {pitch=0, roll=0, yaw=0}
     self._init = false
 
+    -- ── 自动开启无线 modem（GPS 定位需要）────────────────
+    -- gps.locate() 需要无线 modem 已 open，才能收发 GPS 信号
+    peripheral.find("modem", function(_, m)
+        if m.isWireless and m.isWireless() then
+            m.open(65534)   -- CC GPS 协议固定使用 65534 频道
+        end
+    end)
+
     return self
 end
 
@@ -277,17 +285,20 @@ end
 
 -- 单独调用，放在慢速循环（1~2Hz），避免阻塞控制环
 function IMU:readGPS()
-    -- 用 CC 原生 GPS 定位（需要地图上有 GPS 卫星方块）
-    -- 超时 0.1 秒，避免阻塞控制环（gpsLoop 在独立协程里调用）
-    local wx, wy, wz = gps.locate(0.1)
+    -- 用 CC 原生 GPS 定位（需要地图上有 GPS 主机方块 + 本机有无线 modem）
+    -- gps.locate() 内部会广播请求，等待至少3个主机响应
+    local wx, wy, wz = gps.locate(0.5)
     if wx then
         if self._origin_x == nil then
             self._origin_x = wx
             self._origin_z = wz
+            self._origin_y = wy
         end
         self.x      = wx - self._origin_x
         self.z      = wz - self._origin_z
         self.gps_ok = true
+        self.gps_wx = wx   -- 世界坐标（调试用）
+        self.gps_wz = wz
     else
         self.gps_ok = false
     end
@@ -295,9 +306,12 @@ end
 
 function IMU:status()
     local function yn(p) return p and "OK" or "--" end
+    local gps_str = self.gps_ok
+        and string.format("OK(%.0f,%.0f)", self.gps_wx or 0, self.gps_wz or 0)
+        or "--"
     return string.format("gim:%s alt:%s vx:%s vz:%s nav:%s gps:%s",
         yn(self.gim_p), yn(self.alt_p), yn(self.vel_x_p), yn(self.vel_z_p),
-        yn(self.nav_p), self.gps_ok and "OK" or (self.gps_p and "ERR" or "--"))
+        yn(self.nav_p), gps_str)
 end
 
 return IMU
