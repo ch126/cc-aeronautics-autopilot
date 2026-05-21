@@ -103,6 +103,12 @@ local function ctrlLoop()
             if outer_acc >= OUTER_DT then
                 ctrl:updateOuter(imu_state, outer_acc)
                 outer_acc = 0
+                -- 到达检测：控制器切换到悬停后通知用户
+                if ctrl.arrived then
+                    ctrl.arrived = false
+                    gui:log(string.format("Arrived! Holding (%.1f, %.1f)",
+                        ctrl.target_x or 0, ctrl.target_z or 0), "OK")
+                end
             end
             local po, ro, yo = ctrl:updateInner(imu_state, dt)
             mixer:mix(ctrl.throttle_out or C.RPM_HOVER, po, ro, yo)
@@ -174,9 +180,11 @@ local function handle_cmd(line)
         local z   = tonumber(parts[3])
         local alt = tonumber(parts[4]) or ctrl.target_alt
         if x and z then
-            ctrl.target_x   = x
-            ctrl.target_z   = z
-            ctrl.target_alt = alt
+            ctrl.target_x     = x
+            ctrl.target_z     = z
+            ctrl.target_alt   = alt
+            ctrl._goto_active = true   -- 触发到达检测
+            ctrl.arrived      = false
             gui:log(string.format("Goto (%.1f, %.1f) alt %.1f", x, z, alt), "OK")
         else
             gui:log("Usage: goto <x> <z> [alt]", "WARN")
@@ -322,9 +330,11 @@ local function handle_button(action)
             local z   = tonumber(res[2])
             local alt = tonumber(res[3]) or ctrl.target_alt
             if x and z then
-                ctrl.target_x   = x
-                ctrl.target_z   = z
-                ctrl.target_alt = alt
+                ctrl.target_x     = x
+                ctrl.target_z     = z
+                ctrl.target_alt   = alt
+                ctrl._goto_active = true
+                ctrl.arrived      = false
                 gui:log(string.format("Goto (%.1f,%.1f) alt %.1f", x, z, alt), "OK")
             end
         end

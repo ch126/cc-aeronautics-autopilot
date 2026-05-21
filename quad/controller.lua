@@ -104,6 +104,20 @@ function Ctrl:updateOuter(imu_state, dt)
         local ez = self.target_z - imu_state.z
         local dist = math.sqrt(ex*ex + ez*ez)
 
+        -- ── 到达检测 ────────────────────────────────────────────
+        -- dist < ARRIVAL_RADIUS 时：冻结目标为当前位置，切换到悬停定点
+        -- 积分器保留（不清零），避免立刻再漂移
+        local arrival_r = C.ARRIVAL_RADIUS or 2.0
+        if self._goto_active and dist < arrival_r then
+            self._goto_active = false
+            self.arrived      = true   -- 供 main.lua 检测
+            -- 锁定当前位置（消除追逐）
+            self.target_x = imu_state.x
+            self.target_z = imu_state.z
+            ex, ez = 0, 0
+            dist   = 0
+        end
+
         -- 位置积分器：消除稳态偏差（风/推力偏差）
         -- 只在 GPS 有效且误差较小时积分，避免积分饱和
         if imu_state.gps_ok and dist < 5.0 then
@@ -194,6 +208,8 @@ function Ctrl:arm(alt, yaw)
     self._alt_i       = 0
     self._pos_ix      = 0
     self._pos_iz      = 0
+    self._goto_active = false
+    self.arrived      = false
     -- reset all integrators
     for _, p in ipairs({
         self.att_p,  self.att_q,  self.att_r,
