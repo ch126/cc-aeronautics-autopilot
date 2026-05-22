@@ -23,9 +23,9 @@
 --    R/F = up/down        X = stop   M = exit manual
 -- =============================================================
 
--- CC:Tweaked require 依赖工作目录，startup.lua 已 setDir("/")
--- 追加根路径确保兼容直接 lua 运行的情况
-package.path = package.path .. ";/autopilot/?.lua;/?.lua"
+-- 绝对路径，不依赖 CWD，在 CC:Tweaked 中 require("autopilot.gui") 
+-- 会将 "." 替换为 "/" 得到 "autopilot/gui"，配合 "/?.lua" 得到 "/autopilot/gui.lua"
+package.path = "/?.lua"
 
 local Nav    = require("autopilot.nav")
 local GUI    = require("autopilot.gui")

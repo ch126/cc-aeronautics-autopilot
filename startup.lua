@@ -18,4 +18,4 @@ term.setTextColor(colors.white)
 
 
 shell.setDir("/")
-shell.run("autopilot/main.lua")
+dofile("/autopilot/main.lua")
