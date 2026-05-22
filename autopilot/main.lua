@@ -23,12 +23,10 @@
 --    R/F = up/down        X = stop   M = exit manual
 -- =============================================================
 
--- CC:Tweaked 内置 require 会自动把 "." 转换为路径分隔符
--- 从根目录查找，无需手动设置 package.path
-
-local Nav    = require("autopilot.nav")
-local GUI    = require("autopilot.gui")
-local Config = require("autopilot.config")
+-- 用 dofile 绝对路径加载，兼容所有版本 CC:Tweaked
+local Config = dofile("/autopilot/config.lua")
+local Nav    = dofile("/autopilot/nav.lua")
+local GUI    = dofile("/autopilot/gui.lua")
 
 -- ── Init ──────────────────────────────────────────────────────
 local gui = GUI.new()

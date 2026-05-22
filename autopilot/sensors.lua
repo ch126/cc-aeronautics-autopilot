@@ -20,7 +20,7 @@
 --    Dead-zone: skip DR update if filtered speed < DR_MIN_SPEED
 -- =============================================================
 
-local Config = require("autopilot.config")
+local Config = dofile("/autopilot/config.lua")
 
 -- ── Tunable filtering constants ───────────────────────────────
 -- EMA smoothing factor: 1 = no filter, 0.05 = very heavy

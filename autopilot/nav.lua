@@ -16,9 +16,9 @@
 --    MANUAL   - raw rs output controlled by caller (main.lua)
 -- =============================================================
 
-local PIDMod  = require("autopilot.pid")
-local Sensors = require("autopilot.sensors")
-local Config  = require("autopilot.config")
+local PIDMod  = dofile("/autopilot/pid.lua")
+local Sensors = dofile("/autopilot/sensors.lua")
+local Config  = dofile("/autopilot/config.lua")
 
 local Nav = {}
 Nav.__index = Nav
