@@ -253,6 +253,7 @@ end
 
 
   -- 7
+local function make_buttons(W)
     local btns = {
         { label="  GO   ", color=TH.btn_go,   action="goto"  },
         { label=" WP+  ", color=TH.btn_active,action="wp_add"},
