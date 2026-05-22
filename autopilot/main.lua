@@ -23,9 +23,8 @@
 --    R/F = up/down        X = stop   M = exit manual
 -- =============================================================
 
--- 绝对路径，不依赖 CWD，在 CC:Tweaked 中 require("autopilot.gui") 
--- 会将 "." 替换为 "/" 得到 "autopilot/gui"，配合 "/?.lua" 得到 "/autopilot/gui.lua"
-package.path = "/?.lua"
+-- CC:Tweaked 内置 require 会自动把 "." 转换为路径分隔符
+-- 从根目录查找，无需手动设置 package.path
 
 local Nav    = require("autopilot.nav")
 local GUI    = require("autopilot.gui")
