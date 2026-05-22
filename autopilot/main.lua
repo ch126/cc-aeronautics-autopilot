@@ -245,6 +245,26 @@ local function handle(cmd_str)
             gui:log("Axis: alt | spd | hdg", "INFO")
         end
 
+    elseif cmd == "rstest" then
+        -- 直接测试红石输出，不依赖 PID
+        -- 用法: rstest <side> <0-15>  或  rstest off
+        if parts[2] == "off" then
+            for _, side in ipairs({"top","bottom","left","right","front","back"}) do
+                rs.setAnalogOutput(side, 0)
+            end
+            gui:log("All RS outputs OFF", "WARN")
+        else
+            local side = parts[2]
+            local val  = tonumber(parts[3]) or 15
+            if not side then
+                gui:log("Usage: rstest <side> <0-15>  or  rstest off", "WARN")
+                gui:log("Sides: top bottom left right front back", "INFO")
+            else
+                rs.setAnalogOutput(side, math.floor(math.max(0, math.min(15, val))))
+                gui:log(string.format("RS %s = %d", side, val), "OK")
+            end
+        end
+
     else
         gui:log("Unknown: " .. cmd .. "  (help for list)", "WARN")
     end
