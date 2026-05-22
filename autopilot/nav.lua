@@ -32,11 +32,11 @@ Nav.MODE = {
 }
 
 -- ── Redstone helper ───────────────────────────────────────────
--- power: 0.0-1.0 float -> mapped to 0-RS_MAX integer
-local function rsSet(side, power)
+-- v: 生の RS 值 0..RS_MAX (float), 自动 clamp + round
+local function rsSet(side, v)
     if not side then return end
-    local v = math.floor(math.max(0, math.min(1, power)) * Config.RS_MAX + 0.5)
-    rs.setAnalogOutput(side, v)
+    local out = math.floor(math.max(0, math.min(Config.RS_MAX, v)) + 0.5)
+    rs.setAnalogOutput(side, out)
 end
 
 local function rsOff(side)
@@ -180,15 +180,14 @@ function Nav:_controlStep(dt)
 
     -- ── Altitude ──────────────────────────────────────────────
     if self.target_alt then
-        local alt_err = self.target_alt - s.altitude
-        local lift    = self.pid_alt:compute(self.target_alt, s.altitude, dt)
-        -- lift > 0 -> go up, lift < 0 -> go down
+        local lift = self.pid_alt:compute(self.target_alt, s.altitude, dt)
+        -- PID output_max = RS_MAX, 直接传入 rsSet
         if lift >= 0 then
-            rsSet(Config.SIDE_THRUST_U, lift / Config.RS_MAX)
+            rsSet(Config.SIDE_THRUST_U, lift)
             rsOff(Config.SIDE_THRUST_D)
         else
             rsOff(Config.SIDE_THRUST_U)
-            rsSet(Config.SIDE_THRUST_D, (-lift) / Config.RS_MAX)
+            rsSet(Config.SIDE_THRUST_D, -lift)
         end
     else
         rsOff(Config.SIDE_THRUST_U)
@@ -199,8 +198,8 @@ function Nav:_controlStep(dt)
     local hdg_ok = true
     if self.target_hdg then
         local hdg_err = normalizeAngle(self.target_hdg - s.heading)
-        local yaw_out = clamp(self.pid_hdg:compute(0, -hdg_err, dt), -1, 1)
-        -- yaw_out > 0 -> turn right, < 0 -> turn left
+        local yaw_out = self.pid_hdg:compute(0, -hdg_err, dt)
+        -- PID output_max = RS_MAX, 直接传入 rsSet
         if yaw_out >= 0 then
             rsSet(Config.SIDE_YAW_R, yaw_out)
             rsOff(Config.SIDE_YAW_L)
@@ -215,18 +214,17 @@ function Nav:_controlStep(dt)
     end
 
     -- ── Forward speed ─────────────────────────────────────────
-    -- Only thrust forward if heading is roughly correct
     if self.mode ~= Nav.MODE.HOVER and hdg_ok then
-        local spd_out = self.pid_spd:compute(self.target_spd, s.speed, dt)
+        local spd_out = self.pid_spd:compute(self.target_spd, s.horiz_speed or s.speed, dt)
+        -- PID output_max = RS_MAX, 直接传入 rsSet
         if spd_out >= 0 then
-            rsSet(Config.SIDE_THRUST_F, spd_out / Config.RS_MAX)
+            rsSet(Config.SIDE_THRUST_F, spd_out)
             rsOff(Config.SIDE_THRUST_B)
         else
             rsOff(Config.SIDE_THRUST_F)
-            rsSet(Config.SIDE_THRUST_B, (-spd_out) / Config.RS_MAX)
+            rsSet(Config.SIDE_THRUST_B, -spd_out)
         end
     else
-        -- HOVER or not aligned: kill forward thrust
         rsOff(Config.SIDE_THRUST_F)
         rsOff(Config.SIDE_THRUST_B)
     end
