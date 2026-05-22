@@ -23,8 +23,9 @@
 --    R/F = up/down        X = stop   M = exit manual
 -- =============================================================
 
--- 强制从根目录查找模块，兼容 shell.run / startup.lua 启动方式
-package.path = "/?.lua;/?/init.lua;/autopilot/?.lua"
+-- CC:Tweaked require 依赖工作目录，startup.lua 已 setDir("/")
+-- 追加根路径确保兼容直接 lua 运行的情况
+package.path = package.path .. ";/autopilot/?.lua;/?.lua"
 
 local Nav    = require("autopilot.nav")
 local GUI    = require("autopilot.gui")

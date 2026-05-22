@@ -17,4 +17,5 @@ print("+----------------------------------------------+")
 term.setTextColor(colors.white)
 
 
+shell.setDir("/")
 shell.run("autopilot/main.lua")
