@@ -44,6 +44,11 @@ Config.MAX_SPEED         = 8.0     -- max desired horizontal speed (m/s)
 Config.YAW_THRESHOLD     = 5.0     -- heading error below this -> allow thrust (deg)
 Config.ALT_THRESHOLD     = 1.0     -- altitude error below this -> stop lift (blocks)
 
+-- 接近目标时开始线性减弱红石信号的区间
+Config.ALT_SOFT_ZONE     = 8.0     -- 高度误差在此范围内开始减弱 (blocks)
+Config.HDG_SOFT_ZONE     = 30.0    -- 航向误差在此范围内开始减弱 (deg)
+Config.SPD_SOFT_ZONE     = 2.0     -- 速度误差在此范围内开始减弱 (m/s)
+
 -- ── PID gains (altitude) ─────────────────────────────────────
 Config.PID_ALT = {
     kp = 1.5,

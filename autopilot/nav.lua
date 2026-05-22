@@ -52,6 +52,13 @@ end
 
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 
+-- 接近目标时线性衰减：误差绝对值在 zone 内时返回 0..1 的系数
+-- 误差 >= zone 时返回 1（全功率），误差 = 0 时返回 0
+local function softScale(err, zone)
+    if zone <= 0 then return 1 end
+    return clamp(math.abs(err) / zone, 0, 1)
+end
+
 -- ── Constructor ───────────────────────────────────────────────
 function Nav.new()
     local sens = Sensors.new()
@@ -180,8 +187,11 @@ function Nav:_controlStep(dt)
 
     -- ── Altitude ──────────────────────────────────────────────
     if self.target_alt then
-        local lift = self.pid_alt:compute(self.target_alt, s.altitude, dt)
-        -- PID output_max = RS_MAX, 直接传入 rsSet
+        local alt_err = self.target_alt - s.altitude
+        local lift    = self.pid_alt:compute(self.target_alt, s.altitude, dt)
+        -- 接近目标时线性衰减，同时 clamp 0..RS_MAX
+        local scale   = softScale(alt_err, Config.ALT_SOFT_ZONE)
+        lift = clamp(lift * scale, -Config.RS_MAX, Config.RS_MAX)
         if lift >= 0 then
             rsSet(Config.SIDE_THRUST_U, lift)
             rsOff(Config.SIDE_THRUST_D)
@@ -199,7 +209,9 @@ function Nav:_controlStep(dt)
     if self.target_hdg then
         local hdg_err = normalizeAngle(self.target_hdg - s.heading)
         local yaw_out = self.pid_hdg:compute(0, -hdg_err, dt)
-        -- PID output_max = RS_MAX, 直接传入 rsSet
+        -- 接近目标航向时线性衰减
+        local scale   = softScale(hdg_err, Config.HDG_SOFT_ZONE)
+        yaw_out = clamp(yaw_out * scale, -Config.RS_MAX, Config.RS_MAX)
         if yaw_out >= 0 then
             rsSet(Config.SIDE_YAW_R, yaw_out)
             rsOff(Config.SIDE_YAW_L)
@@ -215,8 +227,11 @@ function Nav:_controlStep(dt)
 
     -- ── Forward speed ─────────────────────────────────────────
     if self.mode ~= Nav.MODE.HOVER and hdg_ok then
+        local spd_err = self.target_spd - (s.horiz_speed or s.speed)
         local spd_out = self.pid_spd:compute(self.target_spd, s.horiz_speed or s.speed, dt)
-        -- PID output_max = RS_MAX, 直接传入 rsSet
+        -- 接近目标速度时线性衰减
+        local scale   = softScale(spd_err, Config.SPD_SOFT_ZONE)
+        spd_out = clamp(spd_out * scale, -Config.RS_MAX, Config.RS_MAX)
         if spd_out >= 0 then
             rsSet(Config.SIDE_THRUST_F, spd_out)
             rsOff(Config.SIDE_THRUST_B)
