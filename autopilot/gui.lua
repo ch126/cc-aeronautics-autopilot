@@ -337,9 +337,15 @@ function GUI:drawStatus(s)
         s.altitude or 0,
         s.tgt_alt and string.format("  ->%.0f", s.tgt_alt) or ""), alt_c)
 
-    lv(r+4, "Speed:  ", string.format("%.2f m/s%s",
-        s.speed or 0,
-        s.tgt_spd and s.tgt_spd > 0 and string.format("  ->%.1f", s.tgt_spd) or ""))
+    -- Show horizontal speed with vertical component in parentheses
+    local spd_str = string.format("%.2f m/s",  s.horiz_speed or s.speed or 0)
+    if (s.vert_speed or 0) ~= 0 then
+        spd_str = spd_str .. string.format("  vt:%.1f", s.vert_speed)
+    end
+    if s.tgt_spd and s.tgt_spd > 0 then
+        spd_str = spd_str .. string.format("  ->%.1f", s.tgt_spd)
+    end
+    lv(r+4, "Speed:  ", spd_str)
 
     lv(r+5, "Heading:", string.format("%.1f deg%s",
         s.heading or 0,
@@ -350,8 +356,9 @@ function GUI:drawStatus(s)
     lv(r+7, "Pitch:  ", string.format("%.1f  Roll: %.1f",
         s.pitch or 0, s.roll or 0))
 
-    lv(r+8, "DR pos: ", string.format("dX:%.0f  dZ:%.0f",
-        s.dr_x or 0, s.dr_z or 0), TH.value_hi)
+    -- DR position + odometer
+    lv(r+8, "DR pos: ", string.format("dX:%.0f dZ:%.0f  odo:%.0f",
+        s.dr_x or 0, s.dr_z or 0, s.dr_dist or 0), TH.value_hi)
 
     write_at(t, 2, r+9, string.rep("-", W-1), TH.panel_border, TH.panel_bg)
 

@@ -71,9 +71,18 @@ Config.PID_HDG = {
     output_max   = 15.0,
 }
 
--- ── Dead reckoning ────────────────────────────────────────────
--- Used for relative waypoint navigation (goto dx, dz).
--- Accuracy degrades over time; reset with 'pos reset'.
-Config.DR_DECAY = 0.0  -- optional velocity decay correction (0 = off)
+-- ── Dead reckoning & sensor filtering ────────────────────────
+-- EMA smoothing factor for speed before DR integration
+--   Range 0.0-1.0: larger = faster response but more noise
+--   0.25 = mild smoothing (~4-tick lag), 0.10 = heavy smoothing
+Config.DR_EMA_SPEED  = 0.25
+
+-- EMA smoothing factor for heading before DR integration
+--   0.30 = mild smoothing; heading changes take ~3 ticks to settle
+Config.DR_EMA_HDG    = 0.30
+
+-- Minimum filtered speed (m/s) to allow DR integration
+--   Below this, position is frozen (prevents drift at rest)
+Config.DR_MIN_SPEED  = 0.15
 
 return Config

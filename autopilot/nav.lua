@@ -259,21 +259,30 @@ end
 function Nav:getStatus()
     local s = self.sensors
     return {
-        mode     = self.mode,
-        msg      = self.msg,
-        altitude = s.altitude,
-        speed    = s.speed,
-        heading  = s.heading,
-        pitch    = s.pitch,
-        roll     = s.roll,
-        dr_x     = s.dr_x,
-        dr_z     = s.dr_z,
-        elapsed  = self.elapsed,
-        sensors  = s:status(),
+        mode        = self.mode,
+        msg         = self.msg,
+        -- sensor readings
+        altitude    = s.altitude,
+        speed       = s.speed,
+        heading     = s.heading,
+        pitch       = s.pitch,
+        roll        = s.roll,
+        -- velocity decomposition (from filtered DR)
+        horiz_speed = s.horiz_speed,
+        vert_speed  = s.vert_speed,
+        vx          = s.vx,
+        vz          = s.vz,
+        -- dead reckoning position
+        dr_x        = s.dr_x,
+        dr_z        = s.dr_z,
+        dr_dist     = s.dr_dist,
+        -- meta
+        elapsed     = self.elapsed,
+        sensors     = s:status(),
         -- setpoints
-        tgt_alt  = self.target_alt,
-        tgt_spd  = self.target_spd,
-        tgt_hdg  = self.target_hdg,
+        tgt_alt     = self.target_alt,
+        tgt_spd     = self.target_spd,
+        tgt_hdg     = self.target_hdg,
     }
 end
 

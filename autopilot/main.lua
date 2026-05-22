@@ -201,9 +201,20 @@ local function handle(cmd_str)
             nav.sensors:resetDR()
             gui:log("Dead-reckoning position reset", "OK")
         else
+            local s = nav.sensors
             local st = nav:getStatus()
-            gui:log(string.format("DR pos: dX=%.1f dZ=%.1f  alt=%.1f  hdg=%.1f",
-                st.dr_x, st.dr_z, st.altitude, st.heading), "INFO")
+            gui:log(string.format(
+                "DR pos : dX=%.1f  dZ=%.1f  (ODO %.1f blk)",
+                s.dr_x, s.dr_z, s.dr_dist), "INFO")
+            gui:log(string.format(
+                "Flight : alt=%.1f  hdg=%.1f  spd=%.2f m/s",
+                st.altitude, st.heading, st.speed), "INFO")
+            gui:log(string.format(
+                "Velocity: vX=%.2f  vZ=%.2f  (horiz=%.2f  vert=%.2f)",
+                s.vx, s.vz, s.horiz_speed, s.vert_speed), "INFO")
+            gui:log(string.format(
+                "Attitude: pitch=%.1f  roll=%.1f",
+                st.pitch, st.roll), "INFO")
         end
 
     elseif cmd == "manual" then
