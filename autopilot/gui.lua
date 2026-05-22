@@ -134,8 +134,124 @@ local function draw_progress(t, x, y, w, pct, label, fg, bg)
 end
 
 
-  -- : { label, x, y, w, color, action_id }
-local function make_buttons(W)
+-- ── blit helpers (借鉴 shao 飞控的高效渲染方式) ───────────────
+-- genStr(c, n): 生成 n 个字符 c 的颜色字符串，用于 blit()
+local function genStr(c, n)
+    if n <= 0 then return "" end
+    return string.rep(c, n)
+end
+
+-- color -> single hex char for blit
+local color_char = {
+    [colors.black]     = "0", [colors.white]    = "f",
+    [colors.orange]    = "1", [colors.magenta]  = "2",
+    [colors.lightBlue] = "3", [colors.yellow]   = "4",
+    [colors.lime]      = "5", [colors.pink]      = "6",
+    [colors.gray]      = "7", [colors.lightGray]= "8",
+    [colors.cyan]      = "9", [colors.purple]   = "a",
+    [colors.blue]      = "b", [colors.brown]    = "c",
+    [colors.green]     = "d", [colors.red]       = "e",
+}
+local function cc(col) return color_char[col] or "f" end
+
+-- blit_at: 在 terminal t 的 (x,y) 用 blit 写 text，fg/bg 是 colors.* 常量
+local function blit_at(t, x, y, text, fg_col, bg_col)
+    t.setCursorPos(x, y)
+    local n = #text
+    t.blit(text, genStr(cc(fg_col), n), genStr(cc(bg_col), n))
+end
+
+-- ── 人工地平仪 (借鉴 shao attPage 的核心姿态显示) ─────────────
+-- 在 win_status 内 (x0,y0) 位置绘制宽 w 高 h 的地平仪
+-- pitch: 俯仰角(deg, +上仰), roll: 横滚角(deg, +右倾)
+local function draw_ahi(t, x0, y0, w, h, pitch, roll, bg_c, fg_c, sky_c, gnd_c)
+    bg_c  = bg_c  or TH.panel_bg
+    fg_c  = fg_c  or colors.white
+    sky_c = sky_c or colors.blue      -- 天空色
+    gnd_c = gnd_c or colors.brown     -- 地面色
+
+    local mid_y = h / 2
+    -- 俯仰偏移：pitch 度对应 pitch/90 * midH 行
+    local pitch_off = math.floor(pitch / 90 * mid_y + 0.5)
+    pitch_off = math.max(-(h-1), math.min(h-1, pitch_off))
+
+    -- 横滚：地平线左端和右端的 Y 偏移
+    local roll_rad = math.rad(roll)
+    local half_w   = (w - 2) / 2
+    local roll_dy  = math.floor(math.tan(roll_rad) * half_w + 0.5)
+    roll_dy = math.max(-(h-1), math.min(h-1, roll_dy))
+
+    -- 清底色：先按俯仰分天空/地面
+    for dy = 1, h do
+        local row_y = y0 + dy - 1
+        -- 水平线在 mid_y - pitch_off
+        local horizon_row = mid_y - pitch_off
+        local col = dy <= horizon_row and sky_c or gnd_c
+        write_at(t, x0, row_y, string.rep(" ", w), fg_c, col)
+    end
+
+    -- 画地平线（用 blit，更鲜明）
+    local hl = math.floor(mid_y - pitch_off)
+    hl = math.max(1, math.min(h, hl))
+    -- 左半边
+    for dx = 0, math.floor(half_w) - 1 do
+        local line_y = hl + math.floor(roll_dy * dx / half_w + 0.5)
+        line_y = math.max(1, math.min(h, line_y))
+        local col = (line_y <= mid_y - pitch_off) and sky_c or gnd_c
+        blit_at(t, x0 + dx, y0 + line_y - 1, "-", fg_c, col)
+    end
+    -- 右半边
+    for dx = 1, math.floor(half_w) do
+        local line_y = hl - math.floor(roll_dy * dx / half_w + 0.5)
+        line_y = math.max(1, math.min(h, line_y))
+        local col = (line_y <= mid_y - pitch_off) and sky_c or gnd_c
+        blit_at(t, x0 + math.floor(half_w) + dx, y0 + line_y - 1, "-", fg_c, col)
+    end
+
+    -- 中心十字
+    local cx = x0 + math.floor(w / 2) - 1
+    local cy = y0 + math.floor(h / 2) - 1
+    blit_at(t, cx - 2, cy, " -+- ", fg_c, bg_c)
+end
+
+-- ── 罗盘带 (借鉴 shao attPage 顶栏方向字母) ──────────────────
+-- 在 t 的第 y 行、从 x 开始宽 w 画一条随 heading 滚动的罗盘带
+local function draw_compass(t, x, y, w, heading, fg_c, bg_c)
+    fg_c = fg_c or colors.white
+    bg_c = bg_c or TH.title_bg
+    -- 生成 360° 的字符带（每 10° 一个刻度，四个方向有字母）
+    local compass_chars = {}
+    for i = 0, 35 do
+        local deg = i * 10
+        if     deg == 0   then compass_chars[i+1] = "N"
+        elseif deg == 90  then compass_chars[i+1] = "E"
+        elseif deg == 180 then compass_chars[i+1] = "S"
+        elseif deg == 270 then compass_chars[i+1] = "W"
+        else                   compass_chars[i+1] = "|"
+        end
+    end
+
+    -- 让 heading 对应显示窗口中心
+    local mid  = math.floor(w / 2)
+    local buf  = {}
+    for i = 1, w do
+        local offset_deg = (i - mid - 1) * (360 / w)
+        local deg = (heading + offset_deg) % 360
+        local idx = math.floor(deg / 10 + 0.5) % 36 + 1
+        buf[i] = compass_chars[idx]
+    end
+    local str = table.concat(buf)
+    -- 中心标记用高亮色
+    local pre  = str:sub(1, mid - 1)
+    local mark = str:sub(mid, mid)
+    local post = str:sub(mid + 1)
+    t.setCursorPos(x, y)
+    t.blit(pre,  genStr(cc(fg_c), #pre),  genStr(cc(bg_c), #pre))
+    t.blit(mark, cc(colors.yellow),         cc(colors.red))
+    t.blit(post, genStr(cc(fg_c), #post), genStr(cc(bg_c), #post))
+end
+
+
   -- 7
     local btns = {
         { label="  GO   ", color=TH.btn_go,   action="goto"  },
@@ -302,73 +418,81 @@ local STATE_ICON = {
 }
 
 function GUI:drawStatus(s)
-    local t = self.win_status
-    local W = self.left_w - 2
+    local t   = self.win_status
+    local CW  = self.left_w - 2  -- content width inside borders
+    local r   = 2                 -- first content row (row 1 = top border)
+
+    -- helpers
     local function lv(row, label, value, vc)
         local llen = #label
         write_at(t, 2, row, label, TH.label, TH.panel_bg)
         local vs = " " .. tostring(value)
+        if #vs > CW - llen then vs = vs:sub(1, CW - llen) end
         write_at(t, 2 + llen, row, vs, vc or TH.value, TH.panel_bg)
-        local used = 2 + llen + #vs
-        local tail = W - used + 1
-        if tail > 0 then
-            write_at(t, used + 1, row, string.rep(" ", tail), TH.value, TH.panel_bg)
+        local used = llen + #vs
+        if used < CW then
+            write_at(t, 2 + used, row,
+                string.rep(" ", CW - used), TH.value, TH.panel_bg)
         end
     end
+    local function hline(row)
+        write_at(t, 2, row, string.rep("-", CW - 1), TH.panel_border, TH.panel_bg)
+    end
 
+    -- ── Row r+0: Mode ─────────────────────────────────────────
     local mode = s.mode or "ERROR"
-    local sc = STATE_COLOR[mode] or TH.value
-    local si = STATE_ICON[mode]  or "?"
+    local sc   = STATE_COLOR[mode] or TH.value
+    local si   = STATE_ICON[mode]  or "?"
+    lv(r, "Mode:", si .. " " .. mode, sc)
 
-    local r = 2
-
-    lv(r, "Mode:   ", si .. " " .. mode, sc)
-
+    -- ── Row r+1: Status message ────────────────────────────────
     local msg = s.msg or ""
-    if #msg > W - 2 then msg = msg:sub(1, W-5) .. "..." end
-    write_at(t, 2, r+1, string.rep(" ", W), TH.label, TH.panel_bg)
-    write_at(t, 2, r+1, msg, TH.label, TH.panel_bg)
+    if #msg > CW - 1 then msg = msg:sub(1, CW - 4) .. "..." end
+    write_at(t, 2, r+1, msg .. string.rep(" ", CW - #msg - 1),
+        TH.label, TH.panel_bg)
 
-    write_at(t, 2, r+2, string.rep("-", W-1), TH.panel_border, TH.panel_bg)
+    -- ── Row r+2: Alt | Speed (compact) ────────────────────────
+    local alt_str = string.format("%.1f", s.altitude or 0)
+    local spd_str = string.format("%.1f", s.horiz_speed or s.speed or 0)
+    local vt_str  = (math.abs(s.vert_speed or 0) > 0.1)
+                    and string.format("%+.1f", s.vert_speed) or ""
+    local line2 = string.format("A:%-5s  Spd:%-5s %s",
+        alt_str, spd_str, vt_str)
+    if #line2 > CW - 1 then line2 = line2:sub(1, CW-1) end
+    write_at(t, 2, r+2, line2 .. string.rep(" ", CW - 1 - #line2),
+        TH.value_hi, TH.panel_bg)
 
-    -- Flight data
-    local alt_c = TH.value_hi
-    lv(r+3, "Alt:    ", string.format("%.1f blk%s",
-        s.altitude or 0,
-        s.tgt_alt and string.format("  ->%.0f", s.tgt_alt) or ""), alt_c)
+    -- ── Row r+3: Hdg | DR pos ─────────────────────────────────
+    local hdg  = s.heading or 0
+    local hdg_str = string.format("H:%-5.1f", hdg)
+    local dr_str  = string.format("X:%.0f Z:%.0f o:%.0f",
+        s.dr_x or 0, s.dr_z or 0, s.dr_dist or 0)
+    local line3 = hdg_str .. "  " .. dr_str
+    if #line3 > CW - 1 then line3 = line3:sub(1, CW-1) end
+    write_at(t, 2, r+3, line3 .. string.rep(" ", CW - 1 - #line3),
+        TH.value, TH.panel_bg)
 
-    -- Show horizontal speed with vertical component in parentheses
-    local spd_str = string.format("%.2f m/s",  s.horiz_speed or s.speed or 0)
-    if (s.vert_speed or 0) ~= 0 then
-        spd_str = spd_str .. string.format("  vt:%.1f", s.vert_speed)
-    end
-    if s.tgt_spd and s.tgt_spd > 0 then
-        spd_str = spd_str .. string.format("  ->%.1f", s.tgt_spd)
-    end
-    lv(r+4, "Speed:  ", spd_str)
+    -- ── Row r+4: 罗盘带 (heading scroll bar) ─────────────────
+    draw_compass(t, 2, r+4, CW - 1, hdg, TH.title_fg, TH.title_bg)
 
-    lv(r+5, "Heading:", string.format("%.1f deg%s",
-        s.heading or 0,
-        s.tgt_hdg and string.format("  ->%.0f", s.tgt_hdg) or ""))
+    -- ── Rows r+5 ~ r+7: 人工地平仪 AHI (3 rows tall) ─────────
+    local ahi_w = CW - 1
+    local ahi_h = 3
+    local pitch = s.pitch or 0
+    local roll  = s.roll  or 0
+    draw_ahi(t, 2, r+5, ahi_w, ahi_h, pitch, roll)
 
-    write_at(t, 2, r+6, string.rep("-", W-1), TH.panel_border, TH.panel_bg)
+    -- ── Row r+8: Pitch / Roll 数字 ────────────────────────────
+    local pr_str = string.format("P:%+.1f  R:%+.1f", pitch, roll)
+    write_at(t, 2, r+8, pr_str .. string.rep(" ", CW - 1 - #pr_str),
+        TH.value, TH.panel_bg)
 
-    lv(r+7, "Pitch:  ", string.format("%.1f  Roll: %.1f",
-        s.pitch or 0, s.roll or 0))
-
-    -- DR position + odometer
-    lv(r+8, "DR pos: ", string.format("dX:%.0f dZ:%.0f  odo:%.0f",
-        s.dr_x or 0, s.dr_z or 0, s.dr_dist or 0), TH.value_hi)
-
-    write_at(t, 2, r+9, string.rep("-", W-1), TH.panel_border, TH.panel_bg)
-
-    -- Sensor status line
-    local sens_str = s.sensors or "--"
-    if #sens_str > W - 2 then sens_str = sens_str:sub(1, W-5) .. "..." end
-    write_at(t, 2, r+10, string.rep(" ", W), TH.label, TH.panel_bg)
-    write_at(t, 2, r+10, sens_str, TH.label, TH.panel_bg)
-
-    lv(r+11, "Time:   ", string.format("%.1fs", s.elapsed or 0))
+    -- ── Row r+9: Sensor / elapsed ─────────────────────────────
+    local sens_str = (s.sensors or "--") ..
+                     string.format("  t:%.0fs", s.elapsed or 0)
+    if #sens_str > CW - 1 then sens_str = sens_str:sub(1, CW-4) .. "..." end
+    write_at(t, 2, r+9, sens_str .. string.rep(" ", CW - 1 - #sens_str),
+        TH.label, TH.panel_bg)
 end
 
 
